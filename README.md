@@ -4,15 +4,19 @@
 
 <h1 align="center">BLANC</h1>
 
-<p align="center"><em>a modern anti-telescreen tool to block telemetry and data exfiltration URLs.</em></p>
+<p align="center"><em>noir2rules: a modern anti-telescreen tool to block telemetry and data exfiltration URLs.</em></p>
 
 <p align="center">
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-111111"></a>
   <img alt="Go" src="https://img.shields.io/badge/Go-1.24+-111111">
-  <img alt="status" src="https://img.shields.io/badge/status-alpha-8a8a8a">
+  <img alt="version" src="https://img.shields.io/badge/version-0.2.0-111111">
 </p>
 
-BLANC is a small companion to [NOIR](https://github.com/Verlintas/NOIR). NOIR finds the endpoints; BLANC turns them into app-scoped rules for Mihomo, sing-box and DNS filters. It does not scan, run as a daemon, or touch the device.
+BLANC is a small companion to [NOIR](https://github.com/Verlintas/NOIR). It does one job: turn NOIR's domain export into **per-app** Mihomo and sing-box reject rules. It does not scan, run as a daemon, or touch the device.
+
+- **Use BLANC if** you need to block a tracker for one app while keeping it for another.
+- **Use NOIR directly if** you only want a flat DNS blocklist; `domains-trackers.txt` already is one.
+- **Do not use BLANC** to change device settings; that is NOIR's plan/rollback territory.
 
 > [!WARNING]
 > A blocked URL is not privacy. NOIR only sees what is visible in APKs; it
@@ -35,53 +39,41 @@ dependency is `gopkg.in/yaml.v3`.
 ```sh
 noir scan --out noir-out
 ./blanc init
-./blanc compile --report noir-out/report.json --out blanc-out
+./blanc compile --report noir-out/report.json
+./blanc doctor --config ~/.config/mihomo/config.yaml
 ```
 
-Review `blanc-out/SUMMARY.md` and `blanc-out/manifest.json` before importing anything.
+`compile` reads `report.json` and the three NOIR domain files next to it:
+`domains-trackers.txt`, `domains-functional.txt`, `domains-other.txt`. If those
+files are missing, it stops and says so. There is no second classifier.
 
-## Artifacts
+## Five files
 
 | file | use |
 |---|---|
-| `singbox.json`, `singbox-route.json` | app-scoped source rule-set + route fragment |
-| `mihomo.rules.yaml` | logical rules to paste into Mihomo's `rules:` |
-| `mihomo-provider.yaml` | global domains only, importable as a classical provider |
-| `adguard.txt`, `hosts.txt`, `global-domains.txt` | DNS fallback; empty by default |
-| `quarantine.sh`, `rollback.sh`, `quarantine-plan.json` | optional, review before running |
-| `manifest.json`, `SUMMARY.md`, `decisions.json` | decisions, evidence and hashes |
-| `blocked-domains.txt`, `review-domains.txt`, `review-endpoints.txt` | audit lists |
+| `mihomo.rules.yaml` | paste under `rules:`, before broad rules |
+| `singbox.json` | app-scoped source rule-set, version 3 |
+| `singbox-route.json` | route fragment that rejects the rule-set |
+| `SUMMARY.md` | decisions and the “make it take effect” checklist |
+| `manifest.json` | full evidence, input hashes, warnings |
 
-The default is **app-scoped**: a tracker is rejected only for the app that was seen carrying it. `blocked-domains.txt` is the union of every block and loses app scope; do not import it blindly. DNS filters cannot express app scope. They stay empty until you set `compile.globalize` in `blanc.yaml`; at that point app scope is gone for those domains.
-
-`review-domains.txt` lists tracker hits left in review. `review-endpoints.txt`
-lists upload-looking endpoints that BLANC did not auto-block, including unknown
-hosts. Both are for reading, not for import.
+No DNS lists, no quarantine scripts, no decisions file. NOIR already exports
+flat lists and remediation plans; app exceptions live in `blanc.yaml`.
 
 ## Import
 
-Mihomo (Android, TUN mode, `find-process-mode: always`): paste the entries from
-`mihomo.rules.yaml` under your existing `rules:` key, before `MATCH`. Logical
-`AND` rules work in the main list, not inside a rule-provider.
-
-If you want auto-updating global domains only, add the provider:
+Mihomo: paste the entries from `mihomo.rules.yaml` under `rules:` **before**
+`GEOSITE,cn`, `DOMAIN-SUFFIX,cn`, `MATCH`, or any other rule that can match the
+same domains. On Android, enable TUN and process matching
+(`find-process-mode: always`).
 
 ```yaml
-rule-providers:
-  blanc:
-    type: file
-    behavior: classical
-    path: ./blanc-out/mihomo-provider.yaml
-
 rules:
-  - RULE-SET,blanc,REJECT
+  - AND,((PROCESS-NAME,com.example.app),(DOMAIN-SUFFIX,tracker.nightwatch.cn)),REJECT
   - MATCH,DIRECT
 ```
 
-App-scoped entries still need to be pasted inline; the provider cannot express
-the nested `AND` rules.
-
-sing-box (1.11+):
+sing-box 1.11+:
 
 ```json
 {
@@ -99,39 +91,47 @@ sing-box (1.11+):
 }
 ```
 
-AdGuard Home / NextDNS: set `compile.globalize: trackers`, then import `adguard.txt` or `hosts.txt`. `global-domains.txt` is the plain-domain form. This blocks the domains for every app.
+## Make sure it takes effect
+
+`blanc doctor` reads your Mihomo config and checks a narrow set of concrete facts:
+
+- `find-process-mode` and TUN are enabled;
+- BLANC rules are present in `rules:`;
+- no obvious earlier `GEOSITE,cn`, `DOMAIN-SUFFIX,cn`, `MATCH`, `PROCESS-NAME`
+  or other broad rule shadows them.
+
+It is heuristic: it cannot expand `RULE-SET`, resolve GEOSITE data, or prove
+every logical rule. It exits non-zero on a `fail`. The doctor checks Mihomo only;
+for sing-box, keep the reject rule before other route rules.
+
+## What silently does nothing
+
+- app rules without TUN or process matching;
+- app rules placed after `GEOSITE,cn` / `DOMAIN-SUFFIX,cn` / `MATCH`;
+- app-level `PROCESS-NAME` rules on desktop Mihomo;
+- a compile that emits zero rules (it warns, but does not protect).
 
 ## Policy
 
-`blanc init` writes a commented `blanc.yaml`. The defaults are conservative:
+`blanc init` writes a small `blanc.yaml`. It only decides which app capabilities
+trigger blocking, plus per-app allow/block exceptions. Domain classification
+comes from NOIR; BLANC does not reclassify hosts.
 
-- functional endpoints (push, login, update, payment, cloud sync) are never blocked automatically;
-- unknown domains are review, not block;
-- only apps with sensitive data or a sensitive category produce tracker blocks;
-- domain overrides are global; app overrides are scoped.
-
-See [docs/policy.md](docs/policy.md) for fields, precedence and examples, or
-[examples/blanc.yaml](examples/blanc.yaml) for a fuller policy.
-`blanc compile --decisions decisions.json` applies per-finding allow/block/review overrides without editing YAML.
-
-## Optional quarantine
-
-BLANC can write `quarantine.sh` and `rollback.sh` for apps with tracker hits. It never executes them, and it does not use root, Private DNS, a VPN or appops by default.
-
-`quarantine.sh` uses `cmd netpolicy` to restrict **metered background** traffic and `am force-stop` to close the current process. It is not a firewall. System apps and shared UIDs are skipped unless the policy opts in. Read the script, then run it yourself; `rollback.sh` reverses the netpolicy changes. The scripts are POSIX `sh`; use Git Bash or WSL on Windows.
+See [docs/policy.md](docs/policy.md) or [examples/blanc.yaml](examples/blanc.yaml).
 
 ## Notes
 
 - BLANC never phones home.
-- NOIR reports contain package names, UIDs and domains. Review before sharing.
-- Rules are static evidence applied to a static report; rescan when apps change.
+- NOIR reports contain package names and domains. Review before sharing.
+- Rescan when apps change; rules are static evidence applied to a static report.
 - This is a compiler for NOIR, not a replacement for a trusted device.
 - Upstream: [Verlintas/NOIR](https://github.com/Verlintas/NOIR), MIT.
-- Compatibility details: [docs/compatibility.md](docs/compatibility.md).
 
 ## Why Go
 
-The proxies are Go, the output is deterministic, and a single static binary is enough. There is deliberately no TUI, daemon or server: the rule file is the interface.
+The proxies are Go, the output is deterministic, and a single static binary is
+enough. There is deliberately no TUI, daemon or server: the rule file and the
+doctor are the interface.
 
 <p align="center">
   <a href="https://trendshift.io"><img src="docs/ai-slop-67.svg" alt="AI-slop Of The Day #67" width="250"></a>

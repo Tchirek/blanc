@@ -1,129 +1,73 @@
 # Policy
 
-`blanc init` writes the default policy. `blanc compile` accepts `--policy`; when
-omitted, the compiled-in default is used. Unknown fields, unknown data types and
-invalid packages/domains are rejected rather than ignored.
+`blanc init` writes the default. `blanc compile --policy` loads a different file.
+Unknown fields, unknown data types and invalid domains are rejected.
+
+## Authority
+
+Host classification comes from NOIR's `domains-trackers.txt`,
+`domains-functional.txt` and `domains-other.txt`. BLANC does not classify again.
+A host that is not in those files is ignored unless an app `block` list names it
+explicitly.
 
 ## Defaults
 
-- App scope: a tracker is blocked only for the app that was seen carrying it.
-- Functional signals win: `push`, `login`, `update`, `pay`, `cloud`, `sync`,
-  `oauth`, `firebase`, `googleapis` and similar hosts are allow.
-- Unknown hosts are review. They are visible in `SUMMARY.md`,
-  `review-endpoints.txt` and the manifest, but never emitted as rules.
-- A tracker is blocked only when the app has sensitive data or a sensitive
-  category. This is the `sensitive` gate.
-- System apps are compiled, but excluded from quarantine scripts by default.
-- Shared UIDs are excluded from quarantine scripts by default.
+- App scope: a tracker is rejected only for the app that carries it.
+- Functional hosts from NOIR are allowed.
+- Review hosts from NOIR are review.
+- A tracker is blocked only when the app has a sensitive data capability or a
+  sensitive category.
+- System apps are included by default; set `include_system: false` to review
+  their tracker hits instead.
 
 ## Fields
 
 ```yaml
 version: 1
 
-compile:
-  globalize: none
-  include_system: true
-
 sensitive:
-  require: true
   data_types: [location, contacts, sms, calls, mic, camera, screen, apps, identity, files, calendar, accounts]
   categories: [telemetry, ads, location, security, system]
-  min_score: 0
+
+include_system: true
 
 apps:
-  com.example.reader: allow
+  com.example.reader:
+    mode: allow
   com.example.shop:
     mode: block
-    block: [qa.analytics.widgets.cn]
     allow: [login.widgets.cn]
-
-domains:
-  shared.analytics.widgets.cn: allow
-  consent.analytics.widgets.cn:
-    action: block
-
-quarantine:
-  min_blocked_domains: 1
-  include_system: false
-  include_shared_uid: false
-  background_restrict: true
-  appops_background: false
-  force_stop: true
+    block: [qa.analytics.widgets.cn]
 ```
 
-`compile.globalize`:
+`data_types` and `categories` accept the slugs above or NOIR's Chinese labels
+(`位置`, `通讯录`, `遥测/统计`, …).
 
-- `none` — no global rules; DNS lists are empty. This is the default.
-- `trackers` — tracker blocks also become global domain blocks.
-- `all` — every block also becomes a global domain block. Use with care.
+`apps` is optional. A scalar is shorthand for `mode`:
 
-`sensitive.require: false` blocks every tracker regardless of the app's data
-types. `sensitive.min_score` gates automatic blocks by NOIR's score; explicit
-app/domain overrides still win.
+- `mode: allow` — allow all hosts not covered by the app `block` list.
+- `mode: review` — review all hosts not covered by the app allow/block lists.
+- `mode: block` — block tracker-classified hosts not covered by the app allow/block lists; functional/review stay put.
+- `allow` — app-scoped allowlist, wins over everything else.
+- `block` — app-scoped blocklist, wins over mode and can block a host that NOIR
+  did not classify.
 
-Data type and category values accept either the slugs above or NOIR's Chinese
-labels (`位置`, `通讯录`, `遥测/统计`, …).
-
-`apps` overrides:
-
-- scalar: `allow`, `review`, `block` (block applies to tracker findings only);
-- mapping: `mode`, `block` (scoped blocklist), `allow` (scoped allowlist).
-
-`domains` overrides are global:
-
-- scalar: `allow`, `review`, `block`;
-- mapping: `action`.
+`allow` and `block` cannot contain the same host.
 
 ## Precedence
 
-1. `domains.<host>: allow`
-2. `domains.<host>: review`
-3. `domains.<host>: block` (global)
-4. app `allow` list
-5. app `block` list
-6. app mode `allow` / `review`
-7. functional endpoint allow
-8. app mode `block` (trackers only)
-9. system and `min_score` gates
-10. tracker block when sensitive (or when `require` is false)
-11. review otherwise
+1. app `allow` list
+2. app `block` list
+3. app mode `allow`
+4. app mode `review`
+5. NOIR functional
+6. NOIR review / unclassified
+7. app mode `block` (trackers only)
+8. `include_system` filter
+9. tracker + sensitive app capability → block
+10. tracker without sensitive capability → review
 
-A global `domains` block wins over a scoped app allow. Use an app `block` list
-when precision matters.
-
-## Decisions
-
-`decisions.json` exists so findings can be overridden without rewriting YAML:
-
-```json
-{
-  "version": 1,
-  "decisions": {
-    "com.nightmarket.shop|alog.umeng.com": "allow",
-    "jp.quietreader.app|api.quietreader.jp": "block"
-  }
-}
-```
-
-Pass it with `blanc compile --decisions <file>`. Global findings are locked:
-a scoped decision cannot undo a global rule. Edit the policy instead.
-
-## Quarantine
-
-The quarantine section only controls the optional scripts. BLANC never calls
-ADB, never changes Private DNS, and never uninstalls anything.
-
-- `min_blocked_domains` — minimum number of blocked domains for a candidate.
-- `include_system` — allow system apps in `quarantine-plan.json`; rollback is
-  still generated.
-- `include_shared_uid` — allow apps sharing a UID. The restriction then affects
-  the whole UID, not one package.
-- `background_restrict` — emit `cmd netpolicy add restrict-background-blacklist`.
-  This affects metered background traffic only.
-- `appops_background` — optionally emit `RUN_IN_BACKGROUND ignore`; this can
-  break notifications.
-- `force_stop` — optionally emit `am force-stop`.
-
-Set all three actions to `false` to disable quarantine output. Review both
-scripts before running them.
+The reason on every block is either `app blocklist`, `app mode block`, or
+`tracker + app capability: data:<slug>` / `category:<slug>`. The last form is an
+app-capability statement, not a claim that this particular host received that
+data.
