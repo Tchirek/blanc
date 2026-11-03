@@ -1,0 +1,9 @@
+/blanc
+/blanc.exe
+/dist/
+/.tools/
+/coverage.out
+/*.test
+*.prof
+.DS_Store
+Thumbs.db
