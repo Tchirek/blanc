@@ -36,6 +36,19 @@ func blockedDomains(plan *engine.Plan) []byte {
 	return []byte(strings.Join(domains, "\n") + trailingNewline(domains))
 }
 
+func reviewEndpoints(plan *engine.Plan) []byte {
+	var b strings.Builder
+	for _, finding := range plan.Findings {
+		if finding.Verdict != engine.VerdictReview || len(finding.UploadPaths) == 0 {
+			continue
+		}
+		fmt.Fprintf(&b, "%s\t%s\t%s\t%s\t%s\n",
+			finding.Package, finding.Domain, finding.Class,
+			strings.Join(finding.UploadPaths, ","), finding.Reason)
+	}
+	return []byte(b.String())
+}
+
 func reviewDomains(plan *engine.Plan) []byte {
 	set := make(map[string]struct{})
 	for _, finding := range plan.Findings {

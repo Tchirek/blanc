@@ -30,6 +30,7 @@
         "https://login.nightpass.cn/oauth/token",
         "https://push.nightpush.cn/device/register",
         "https://api.nightmarket.cn/v1/cart",
+        "https://api.nightmarket.cn/v1/collect",
         "https://metrics.quietreader.jp/v1/stat",
         "http://203.0.113.7:8080/collect",
         "https://staging.telemetry.nightsight.io/beacon",

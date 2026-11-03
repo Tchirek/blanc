@@ -91,7 +91,7 @@ func singboxRoute() routeFragment {
 					Tag:    "blanc",
 					Type:   "local",
 					Format: "source",
-					Path:   "./blanc/singbox.json",
+					Path:   "./blanc-out/singbox.json",
 				},
 			},
 			Rules: []routeRule{

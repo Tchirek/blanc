@@ -53,13 +53,14 @@ func TestAllDefault(t *testing.T) {
 	plan := testPlan(t, nil, nil)
 	files := renderPlan(t, plan)
 
-	if len(files) != 13 {
+	if len(files) != 16 {
 		t.Fatalf("files = %d", len(files))
 	}
 	for _, name := range []string{
 		FileSingbox, FileSingboxRoute, FileMihomoRules, FileMihomoProvider,
 		FileAdGuard, FileHosts, FileGlobalDomains, FileBlockedDomains,
-		FileReviewDomains, FileSummary, FileManifest, FileArmPlan, FileDecisions,
+		FileReviewDomains, FileReviewEndpoints, FileSummary, FileManifest,
+		FileQuarantinePlan, FileQuarantineScript, FileRollbackScript, FileDecisions,
 	} {
 		if _, ok := files[name]; !ok {
 			t.Fatalf("missing %s", name)
@@ -113,6 +114,10 @@ func TestAllDefault(t *testing.T) {
 	if got := strings.TrimSpace(string(files[FileReviewDomains])); got != "metrics.quietreader.jp" {
 		t.Fatalf("review domains = %q", got)
 	}
+	reviewEndpoints := string(files[FileReviewEndpoints])
+	if !strings.Contains(reviewEndpoints, "com.nightmarket.shop\tapi.nightmarket.cn\treview\tcollect") {
+		t.Fatalf("review endpoints:\n%s", reviewEndpoints)
+	}
 
 	summary := string(files[FileSummary])
 	if !strings.Contains(summary, "com.nightmarket.shop") ||
@@ -134,7 +139,7 @@ func TestAllDefault(t *testing.T) {
 	if m.Stats != plan.Stats {
 		t.Fatalf("stats = %+v", m.Stats)
 	}
-	if len(m.Files) != 12 {
+	if len(m.Files) != 15 {
 		t.Fatalf("file hashes = %d", len(m.Files))
 	}
 	if _, ok := m.Files[FileManifest]; ok {
@@ -148,21 +153,33 @@ func TestAllDefault(t *testing.T) {
 		t.Fatalf("warnings = %v", m.Warnings)
 	}
 
-	var arm armPlan
-	if err := json.Unmarshal(files[FileArmPlan], &arm); err != nil {
+	var qp quarantinePlan
+	if err := json.Unmarshal(files[FileQuarantinePlan], &qp); err != nil {
 		t.Fatal(err)
 	}
-	if len(arm.Targets) != 2 {
-		t.Fatalf("arm targets = %+v", arm.Targets)
+	if len(qp.Targets) != 2 {
+		t.Fatalf("quarantine targets = %+v", qp.Targets)
 	}
-	if arm.Targets[0].Package != "cn.mailroom.app" {
-		t.Fatalf("arm order = %+v", arm.Targets)
+	if qp.Targets[0].Package != "cn.mailroom.app" {
+		t.Fatalf("quarantine order = %+v", qp.Targets)
 	}
-	if !containsLine(arm.Targets[0].Commands, "cmd netpolicy add restrict-background-blacklist 10103") {
-		t.Fatalf("arm commands = %v", arm.Targets[0].Commands)
+	if !containsLine(qp.Targets[0].Commands, "cmd netpolicy add restrict-background-blacklist 10103") {
+		t.Fatalf("quarantine commands = %v", qp.Targets[0].Commands)
 	}
-	if !containsLine(arm.Targets[0].Rollback, "cmd netpolicy remove restrict-background-blacklist 10103") {
-		t.Fatalf("arm rollback = %v", arm.Targets[0].Rollback)
+	if !containsLine(qp.Targets[0].Rollback, "cmd netpolicy remove restrict-background-blacklist 10103") {
+		t.Fatalf("quarantine rollback = %v", qp.Targets[0].Rollback)
+	}
+	script := string(files[FileQuarantineScript])
+	if !strings.Contains(script, "#!/usr/bin/env sh") ||
+		!strings.Contains(script, "adb -s \"$serial\" shell 'cmd netpolicy add restrict-background-blacklist 10103'") {
+		t.Fatalf("quarantine script:\n%s", script)
+	}
+	rollback := string(files[FileRollbackScript])
+	if !strings.Contains(rollback, "adb -s \"$serial\" shell 'cmd netpolicy remove restrict-background-blacklist 10103'") {
+		t.Fatalf("rollback script:\n%s", rollback)
+	}
+	if Mode(FileQuarantineScript) != 0o755 || Mode(FileSingbox) != 0o644 {
+		t.Fatal("unexpected file modes")
 	}
 
 	var dec decisionsFile
@@ -229,26 +246,58 @@ func TestAllGlobalized(t *testing.T) {
 	}
 }
 
-func TestArmPlanFlags(t *testing.T) {
+func TestQuarantinePlanFlags(t *testing.T) {
 	plan := testPlan(t, func(p *policy.Policy) {
 		p.Quarantine.AppOpsBackground = true
 		p.Quarantine.BackgroundRestrict = false
 	}, nil)
 	files := renderPlan(t, plan)
-	var arm armPlan
-	if err := json.Unmarshal(files[FileArmPlan], &arm); err != nil {
+	var qp quarantinePlan
+	if err := json.Unmarshal(files[FileQuarantinePlan], &qp); err != nil {
 		t.Fatal(err)
 	}
-	for _, command := range arm.Targets[0].Commands {
+	for _, command := range qp.Targets[0].Commands {
 		if strings.Contains(command, "netpolicy") {
-			t.Fatalf("unexpected netpolicy command: %v", arm.Targets[0].Commands)
+			t.Fatalf("unexpected netpolicy command: %v", qp.Targets[0].Commands)
 		}
 	}
-	if !containsLine(arm.Targets[0].Commands, "cmd appops set cn.mailroom.app RUN_IN_BACKGROUND ignore") {
-		t.Fatalf("commands = %v", arm.Targets[0].Commands)
+	if !containsLine(qp.Targets[0].Commands, "cmd appops set cn.mailroom.app RUN_IN_BACKGROUND ignore") {
+		t.Fatalf("commands = %v", qp.Targets[0].Commands)
 	}
-	if !containsLine(arm.Targets[0].Rollback, "cmd appops set cn.mailroom.app RUN_IN_BACKGROUND default") {
-		t.Fatalf("rollback = %v", arm.Targets[0].Rollback)
+	if !containsLine(qp.Targets[0].Rollback, "cmd appops set cn.mailroom.app RUN_IN_BACKGROUND default") {
+		t.Fatalf("rollback = %v", qp.Targets[0].Rollback)
+	}
+}
+
+func TestScriptSerialSafety(t *testing.T) {
+	plan := testPlan(t, nil, nil)
+	plan.Device.Serial = `bad";rm -rf /`
+	files := renderPlan(t, plan)
+	script := string(files[FileQuarantineScript])
+	if strings.Contains(script, "bad") || !strings.Contains(script, "BLANC_SERIAL") {
+		t.Fatalf("unsafe serial was embedded:\n%s", script)
+	}
+}
+
+func TestEmptyScripts(t *testing.T) {
+	report, err := audit.Parse([]byte(`{"device":{"serial":"X","model":"Empty"},"apps":[]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pol, err := policy.Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := engine.Compile(report, pol, engine.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := renderPlan(t, plan)
+	if !strings.Contains(string(files[FileQuarantineScript]), "no quarantine targets") {
+		t.Fatalf("script:\n%s", files[FileQuarantineScript])
+	}
+	if !strings.Contains(string(files[FileRollbackScript]), "nothing to roll back") {
+		t.Fatalf("script:\n%s", files[FileRollbackScript])
 	}
 }
 
@@ -316,12 +365,12 @@ func TestEmptyReport(t *testing.T) {
 	if string(files[FileBlockedDomains]) != "" {
 		t.Fatalf("blocked = %q", files[FileBlockedDomains])
 	}
-	var arm armPlan
-	if err := json.Unmarshal(files[FileArmPlan], &arm); err != nil {
+	var qp quarantinePlan
+	if err := json.Unmarshal(files[FileQuarantinePlan], &qp); err != nil {
 		t.Fatal(err)
 	}
-	if arm.Targets == nil || len(arm.Targets) != 0 {
-		t.Fatalf("targets = %#v", arm.Targets)
+	if qp.Targets == nil || len(qp.Targets) != 0 {
+		t.Fatalf("targets = %#v", qp.Targets)
 	}
 }
 

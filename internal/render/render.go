@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -15,19 +16,22 @@ import (
 )
 
 const (
-	FileSingbox        = "singbox.json"
-	FileSingboxRoute   = "singbox-route.json"
-	FileMihomoRules    = "mihomo.rules.yaml"
-	FileMihomoProvider = "mihomo-provider.yaml"
-	FileAdGuard        = "adguard.txt"
-	FileHosts          = "hosts.txt"
-	FileGlobalDomains  = "global-domains.txt"
-	FileBlockedDomains = "blocked-domains.txt"
-	FileReviewDomains  = "review-domains.txt"
-	FileSummary        = "SUMMARY.md"
-	FileManifest       = "manifest.json"
-	FileArmPlan        = "arm-plan.json"
-	FileDecisions      = "decisions.json"
+	FileSingbox          = "singbox.json"
+	FileSingboxRoute     = "singbox-route.json"
+	FileMihomoRules      = "mihomo.rules.yaml"
+	FileMihomoProvider   = "mihomo-provider.yaml"
+	FileAdGuard          = "adguard.txt"
+	FileHosts            = "hosts.txt"
+	FileGlobalDomains    = "global-domains.txt"
+	FileBlockedDomains   = "blocked-domains.txt"
+	FileReviewDomains    = "review-domains.txt"
+	FileReviewEndpoints  = "review-endpoints.txt"
+	FileSummary          = "SUMMARY.md"
+	FileManifest         = "manifest.json"
+	FileQuarantinePlan   = "quarantine-plan.json"
+	FileQuarantineScript = "quarantine.sh"
+	FileRollbackScript   = "rollback.sh"
+	FileDecisions        = "decisions.json"
 )
 
 type Options struct {
@@ -64,15 +68,15 @@ type inputs struct {
 	PolicySource string `json:"policy_source,omitempty"`
 }
 
-type armPlan struct {
-	Version int              `json:"version"`
-	Device  audit.Device     `json:"device"`
-	Targets []armTarget      `json:"targets"`
-	Skipped []engine.Skipped `json:"skipped,omitempty"`
-	Notes   []string         `json:"notes"`
+type quarantinePlan struct {
+	Version int                `json:"version"`
+	Device  audit.Device       `json:"device"`
+	Targets []quarantineTarget `json:"targets"`
+	Skipped []engine.Skipped   `json:"skipped,omitempty"`
+	Notes   []string           `json:"notes"`
 }
 
-type armTarget struct {
+type quarantineTarget struct {
 	Package        string   `json:"package"`
 	UID            string   `json:"uid"`
 	System         bool     `json:"system"`
@@ -108,8 +112,11 @@ func All(plan *engine.Plan, opts Options) (map[string][]byte, error) {
 	files[FileGlobalDomains] = globalDomains(plan)
 	files[FileBlockedDomains] = blockedDomains(plan)
 	files[FileReviewDomains] = reviewDomains(plan)
+	files[FileReviewEndpoints] = reviewEndpoints(plan)
 	files[FileSummary] = summary(plan, opts)
-	files[FileArmPlan] = marshalJSON(buildArmPlan(plan))
+	files[FileQuarantinePlan] = marshalJSON(buildQuarantinePlan(plan))
+	files[FileQuarantineScript] = quarantineScript(plan)
+	files[FileRollbackScript] = rollbackScript(plan)
 	decisions := plan.Decisions
 	if decisions == nil {
 		decisions = map[string]engine.Verdict{}
@@ -150,6 +157,13 @@ func All(plan *engine.Plan, opts Options) (map[string][]byte, error) {
 	}
 	files[FileManifest] = marshalJSON(m)
 	return files, nil
+}
+
+func Mode(name string) os.FileMode {
+	if name == FileQuarantineScript || name == FileRollbackScript {
+		return 0o755
+	}
+	return 0o644
 }
 
 func withDefaults(opts Options) Options {
@@ -283,22 +297,22 @@ func summary(plan *engine.Plan, opts Options) []byte {
 	fmt.Fprintf(&b, "\n## Files\n\n")
 	fmt.Fprintf(&b, "Rules: `singbox.json`, `mihomo.rules.yaml`, `mihomo-provider.yaml`.\n\n")
 	fmt.Fprintf(&b, "DNS fallback: `adguard.txt`, `hosts.txt`, `global-domains.txt`.\n\n")
-	fmt.Fprintf(&b, "Audit: `manifest.json`, `blocked-domains.txt`, `review-domains.txt`.\n\n")
-	fmt.Fprintf(&b, "Reversible arm: `arm-plan.json`.\n")
+	fmt.Fprintf(&b, "Audit: `manifest.json`, `blocked-domains.txt`, `review-domains.txt`, `review-endpoints.txt`.\n\n")
+	fmt.Fprintf(&b, "Optional quarantine: `quarantine.sh`, `rollback.sh`, `quarantine-plan.json`.\n")
 	return []byte(b.String())
 }
 
-func buildArmPlan(plan *engine.Plan) armPlan {
-	arm := armPlan{
+func buildQuarantinePlan(plan *engine.Plan) quarantinePlan {
+	arm := quarantinePlan{
 		Version: 1,
 		Device:  plan.Device,
-		Targets: make([]armTarget, 0, len(plan.Quarantine)),
+		Targets: make([]quarantineTarget, 0, len(plan.Quarantine)),
 		Skipped: plan.Skipped,
 		Notes: []string{
 			"netpolicy restricts metered background traffic; it is not a firewall.",
 			"force-stop closes the current process; the app can be reopened.",
 			"appops background restriction is opt-in and may break notifications.",
-			"Use blanc disarm to reverse netpolicy and appops changes.",
+			"Review and run quarantine.sh; reverse it with rollback.sh.",
 		},
 	}
 	var backgroundRestrict, appOpsBackground, forceStop bool
@@ -308,7 +322,7 @@ func buildArmPlan(plan *engine.Plan) armPlan {
 		forceStop = plan.Policy.Quarantine.ForceStop
 	}
 	for _, target := range plan.Quarantine {
-		entry := armTarget{
+		entry := quarantineTarget{
 			Package:        target.Package,
 			UID:            target.UID,
 			System:         target.System,
