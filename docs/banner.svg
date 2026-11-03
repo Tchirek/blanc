@@ -1,45 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img" aria-labelledby="title desc">
   <title id="title">BLANC</title>
-  <desc id="desc">A black banner with white BLANC lettering, a red rule, and a Japanese haiku.</desc>
-  <defs>
-    <pattern id="scan" width="4" height="4" patternUnits="userSpaceOnUse">
-      <rect width="4" height="4" fill="#050505"/>
-      <rect y="0" width="4" height="1" fill="#0c0c0c"/>
-    </pattern>
-    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
-      <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#141414" stroke-width="0.6"/>
-    </pattern>
-    <linearGradient id="fade" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.10"/>
-      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0.02"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
-
+  <desc id="desc">BLANC wordmark, red underline, vertical divider, and a three-line Japanese haiku.</desc>
   <rect width="1200" height="300" fill="#050505"/>
-  <rect width="1200" height="300" fill="url(#grid)"/>
-  <rect width="1200" height="300" fill="url(#scan)" opacity="0.55"/>
-  <rect x="0.5" y="0.5" width="1199" height="299" fill="none" stroke="#1d1d1d"/>
-
   <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
-    <text x="64" y="56" fill="#8a8a8a" font-size="13" letter-spacing="5">NOIR / AUDIT / RULES / SILENCE</text>
-    <circle cx="1104" cy="51" r="5" fill="#ff3b30"/>
-    <text x="1084" y="56" fill="#8a8a8a" font-size="12" letter-spacing="3" text-anchor="end">LIVE</text>
-
     <text x="58" y="162" fill="#f2f2f2" font-size="112" font-weight="700" letter-spacing="18">BLANC</text>
     <rect x="64" y="186" width="430" height="3" fill="#ff3b30"/>
-    <text x="64" y="224" fill="#a8a8a8" font-size="17" letter-spacing="4">WHITE NOISE FOR ANDROID TELEMETRY</text>
-    <text x="64" y="258" fill="#5f5f5f" font-size="13" letter-spacing="3">APP-SCOPED REJECT · REVIEWABLE SCRIPTS · NO CLOUD</text>
-
     <rect x="742" y="44" width="1" height="212" fill="#242424"/>
     <text x="792" y="94" fill="#e8e8e8" font-size="25" letter-spacing="8">白き紙</text>
     <text x="792" y="142" fill="#e8e8e8" font-size="25" letter-spacing="8">通信の闇を</text>
     <text x="792" y="190" fill="#e8e8e8" font-size="25" letter-spacing="8">断ち切ろう</text>
-    <text x="792" y="236" fill="#6d6d6d" font-size="12" letter-spacing="3">HAIKU FOR A QUIETER DEVICE</text>
-
-    <rect x="1004" y="244" width="132" height="26" fill="#f2f2f2"/>
-    <text x="1070" y="262" fill="#050505" font-size="12" font-weight="700" letter-spacing="2" text-anchor="middle">REDACTED</text>
   </g>
-
-  <rect x="0" y="0" width="1200" height="300" fill="url(#fade)"/>
 </svg>

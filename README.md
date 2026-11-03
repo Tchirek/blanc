@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/banner.svg" alt="BLANC — white noise for Android telemetry" width="100%">
+  <img src="docs/banner.svg" alt="BLANC" width="100%">
 </p>
 
 <h1 align="center">BLANC</h1>
