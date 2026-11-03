@@ -54,9 +54,9 @@ var testLabels = map[string]struct{}{
 
 var trimCut = " \t\r\n\"'`<>()[]{},;"
 
-// 霧の海
-// 見えぬ港を
-// 探しけり
+// 霧の中
+// 見えぬ港の
+// 灯を探る
 func ParseEndpoint(raw string) (Endpoint, error) {
 	clean := strings.Trim(strings.TrimSpace(strings.Map(func(r rune) rune {
 		if r < 0x20 || r == 0x7f {

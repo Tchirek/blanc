@@ -10,9 +10,9 @@ import (
 	"sort"
 )
 
-// 白き紙
-// 端末の声
-// 聞きとめる
+// 見えない糸
+// 端末の奥に
+// 息づきぬ
 type Report struct {
 	Device          Device           `json:"device"`
 	Apps            []App            `json:"apps"`

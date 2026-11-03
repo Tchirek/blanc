@@ -64,9 +64,9 @@ var allowedGlobalize = map[string]struct{}{"none": {}, "trackers": {}, "all": {}
 var allowedModes = map[string]struct{}{"auto": {}, "allow": {}, "block": {}, "review": {}}
 var allowedActions = map[string]struct{}{"allow": {}, "block": {}, "review": {}}
 
-// 白き壁
-// 越えぬ想いを
-// 巡らせる
+// 線を引く
+// 内と外との
+// 境目に
 func Default() *Policy {
 	p := &Policy{
 		Version: 1,

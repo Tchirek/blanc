@@ -112,9 +112,9 @@ type sensitivity struct {
 	reason    string
 }
 
-// 夜の網
-// 星の囁きを
-// 選り分ける
+// 暗き夜
+// 見えぬ声を
+// 星に数え
 func Compile(report *audit.Report, pol *policy.Policy, opts Options) (*Plan, error) {
 	if report == nil {
 		return nil, fmt.Errorf("engine: nil report")
@@ -336,8 +336,8 @@ func groupEndpoints(app audit.App) (map[string]*evidence, []Ignored) {
 	return groups, ignored
 }
 
-// 深き夜
-// 眠るアプリに
+// 眠る影
+// ゆれる窓辺に
 // 鍵をかけ
 func recompute(plan *Plan) {
 	stats := Stats{Apps: plan.AppCount}

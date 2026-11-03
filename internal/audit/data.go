@@ -4,9 +4,9 @@ import (
 	"strings"
 )
 
-// 砂の名を
-// 人の言葉に
-// 置き換える
+// 秘め事を
+// 人は言葉に
+// 見分けたり
 var dataTypeOrder = []string{
 	"location", "contacts", "sms", "calls", "mic", "camera",
 	"screen", "apps", "identity", "files", "calendar", "accounts",

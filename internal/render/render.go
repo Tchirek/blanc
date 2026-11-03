@@ -93,9 +93,9 @@ type decisionsFile struct {
 	Decisions map[string]engine.Verdict `json:"decisions"`
 }
 
-// 朝の門
-// ルールの束を
-// 編み上げる
+// 夜明け前
+// 決めた束を
+// 畳むなり
 func All(plan *engine.Plan, opts Options) (map[string][]byte, error) {
 	if plan == nil {
 		return nil, fmt.Errorf("render: nil plan")
