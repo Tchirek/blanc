@@ -39,18 +39,9 @@ type routeRule struct {
 }
 
 func sourceRuleSetFor(plan *engine.Plan) sourceRuleSet {
-	globals := globalBlockedDomains(plan)
-	globalSet := make(map[string]struct{}, len(globals))
-	for _, domain := range globals {
-		globalSet[domain] = struct{}{}
-	}
-
 	scoped := make(map[string]map[string]struct{})
 	for _, finding := range plan.Findings {
-		if !finding.Blocked() || finding.Global() {
-			continue
-		}
-		if _, ok := globalSet[finding.Domain]; ok {
+		if !finding.Blocked() {
 			continue
 		}
 		domains, ok := scoped[finding.Package]
@@ -61,19 +52,13 @@ func sourceRuleSetFor(plan *engine.Plan) sourceRuleSet {
 		domains[finding.Domain] = struct{}{}
 	}
 
-	rules := make([]sourceRule, 0, len(scoped)+1)
-	if len(globals) > 0 {
-		rules = append(rules, sourceRule{
-			Domain:       globals,
-			DomainSuffix: suffixDomains(globals),
-		})
-	}
-
 	packages := make([]string, 0, len(scoped))
 	for pkg := range scoped {
 		packages = append(packages, pkg)
 	}
 	sort.Strings(packages)
+
+	rules := make([]sourceRule, 0, len(packages))
 	for _, pkg := range packages {
 		domains := sortedSet(scoped[pkg])
 		if len(domains) == 0 {

@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -16,22 +15,11 @@ import (
 )
 
 const (
-	FileSingbox          = "singbox.json"
-	FileSingboxRoute     = "singbox-route.json"
-	FileMihomoRules      = "mihomo.rules.yaml"
-	FileMihomoProvider   = "mihomo-provider.yaml"
-	FileAdGuard          = "adguard.txt"
-	FileHosts            = "hosts.txt"
-	FileGlobalDomains    = "global-domains.txt"
-	FileBlockedDomains   = "blocked-domains.txt"
-	FileReviewDomains    = "review-domains.txt"
-	FileReviewEndpoints  = "review-endpoints.txt"
-	FileSummary          = "SUMMARY.md"
-	FileManifest         = "manifest.json"
-	FileQuarantinePlan   = "quarantine-plan.json"
-	FileQuarantineScript = "quarantine.sh"
-	FileRollbackScript   = "rollback.sh"
-	FileDecisions        = "decisions.json"
+	FileMihomo       = "mihomo.rules.yaml"
+	FileSingbox      = "singbox.json"
+	FileSingboxRoute = "singbox-route.json"
+	FileManifest     = "manifest.json"
+	FileSummary      = "SUMMARY.md"
 )
 
 type Options struct {
@@ -41,18 +29,16 @@ type Options struct {
 }
 
 type manifest struct {
-	Tool        toolInfo                  `json:"tool"`
-	GeneratedAt string                    `json:"generated_at"`
-	Device      audit.Device              `json:"device"`
-	Inputs      inputs                    `json:"inputs"`
-	Globalize   string                    `json:"globalize"`
-	Stats       engine.Stats              `json:"stats"`
-	Findings    []engine.Finding          `json:"findings"`
-	Ignored     []engine.Ignored          `json:"ignored"`
-	Quarantine  []engine.QuarantineTarget `json:"quarantine"`
-	Skipped     []engine.Skipped          `json:"quarantine_skipped"`
-	Files       map[string]string         `json:"files_sha256"`
-	Warnings    []string                  `json:"warnings"`
+	Tool                 toolInfo          `json:"tool"`
+	GeneratedAt          string            `json:"generated_at"`
+	Device               audit.Device      `json:"device"`
+	Inputs               inputs            `json:"inputs"`
+	ClassificationSource string            `json:"classification_source"`
+	Stats                engine.Stats      `json:"stats"`
+	Findings             []engine.Finding  `json:"findings"`
+	Ignored              []engine.Ignored  `json:"ignored"`
+	Files                map[string]string `json:"files_sha256"`
+	Warnings             []string          `json:"warnings"`
 }
 
 type toolInfo struct {
@@ -62,40 +48,18 @@ type toolInfo struct {
 }
 
 type inputs struct {
-	ReportSHA256 string `json:"report_sha256"`
-	PolicySHA256 string `json:"policy_sha256"`
-	ReportSource string `json:"report_source,omitempty"`
-	PolicySource string `json:"policy_source,omitempty"`
+	ReportSHA256 string            `json:"report_sha256"`
+	PolicySHA256 string            `json:"policy_sha256"`
+	ReportSource string            `json:"report_source,omitempty"`
+	PolicySource string            `json:"policy_source,omitempty"`
+	ReportKeys   []string          `json:"report_keys"`
+	DomainsDir   string            `json:"domains_dir"`
+	DomainSHA256 map[string]string `json:"domain_sha256"`
 }
 
-type quarantinePlan struct {
-	Version int                `json:"version"`
-	Device  audit.Device       `json:"device"`
-	Targets []quarantineTarget `json:"targets"`
-	Skipped []engine.Skipped   `json:"skipped,omitempty"`
-	Notes   []string           `json:"notes"`
-}
-
-type quarantineTarget struct {
-	Package        string   `json:"package"`
-	UID            string   `json:"uid"`
-	System         bool     `json:"system"`
-	SharedUID      string   `json:"shared_uid,omitempty"`
-	Score          int      `json:"score"`
-	DataTypes      []string `json:"data_types,omitempty"`
-	BlockedDomains []string `json:"blocked_domains"`
-	Commands       []string `json:"commands"`
-	Rollback       []string `json:"rollback"`
-}
-
-type decisionsFile struct {
-	Version   int                       `json:"version"`
-	Decisions map[string]engine.Verdict `json:"decisions"`
-}
-
-// 夜明け前
-// 決めた束を
-// 畳むなり
+// 朝の門
+// ルールの束を
+// 編み上げる
 func All(plan *engine.Plan, opts Options) (map[string][]byte, error) {
 	if plan == nil {
 		return nil, fmt.Errorf("render: nil plan")
@@ -103,28 +67,10 @@ func All(plan *engine.Plan, opts Options) (map[string][]byte, error) {
 	opts = withDefaults(opts)
 	files := make(map[string][]byte)
 
+	files[FileMihomo] = mihomoRules(plan)
 	files[FileSingbox] = marshalJSON(sourceRuleSetFor(plan))
 	files[FileSingboxRoute] = marshalJSON(singboxRoute())
-	files[FileMihomoRules] = mihomoRules(plan)
-	files[FileMihomoProvider] = mihomoProvider(plan)
-	files[FileAdGuard] = adguard(plan)
-	files[FileHosts] = hosts(plan)
-	files[FileGlobalDomains] = globalDomains(plan)
-	files[FileBlockedDomains] = blockedDomains(plan)
-	files[FileReviewDomains] = reviewDomains(plan)
-	files[FileReviewEndpoints] = reviewEndpoints(plan)
 	files[FileSummary] = summary(plan, opts)
-	files[FileQuarantinePlan] = marshalJSON(buildQuarantinePlan(plan))
-	files[FileQuarantineScript] = quarantineScript(plan)
-	files[FileRollbackScript] = rollbackScript(plan)
-	decisions := plan.Decisions
-	if decisions == nil {
-		decisions = map[string]engine.Verdict{}
-	}
-	files[FileDecisions] = marshalJSON(decisionsFile{
-		Version:   1,
-		Decisions: decisions,
-	})
 
 	fileHashes := make(map[string]string, len(files))
 	for name, data := range files {
@@ -145,25 +91,19 @@ func All(plan *engine.Plan, opts Options) (map[string][]byte, error) {
 			PolicySHA256: plan.PolicyHash,
 			ReportSource: plan.ReportSource,
 			PolicySource: plan.PolicySource,
+			ReportKeys:   plan.ReportKeys,
+			DomainsDir:   plan.DomainsDir,
+			DomainSHA256: plan.DomainHashes,
 		},
-		Globalize:  plan.Globalize,
-		Stats:      plan.Stats,
-		Findings:   plan.Findings,
-		Ignored:    plan.Ignored,
-		Quarantine: plan.Quarantine,
-		Skipped:    plan.Skipped,
-		Files:      fileHashes,
-		Warnings:   warnings(plan),
+		ClassificationSource: plan.ClassificationSource,
+		Stats:                plan.Stats,
+		Findings:             plan.Findings,
+		Ignored:              plan.Ignored,
+		Files:                fileHashes,
+		Warnings:             warnings(plan),
 	}
 	files[FileManifest] = marshalJSON(m)
 	return files, nil
-}
-
-func Mode(name string) os.FileMode {
-	if name == FileQuarantineScript || name == FileRollbackScript {
-		return 0o755
-	}
-	return 0o644
 }
 
 func withDefaults(opts Options) Options {
@@ -187,24 +127,77 @@ func marshalJSON(value any) []byte {
 	return append(raw, '\n')
 }
 
-func uniqueBlockedDomains(plan *engine.Plan) []string {
-	set := make(map[string]struct{})
-	for _, finding := range plan.Findings {
-		if finding.Blocked() {
-			set[finding.Domain] = struct{}{}
-		}
+func warnings(plan *engine.Plan) []string {
+	out := []string{
+		"A blocked URL is not privacy. NOIR sees APK endpoints only; vendor-preinstalled services, lower-level frameworks and system processes can still report data.",
+		"Move to a trusted device and operating system if you need real assurance.",
+		"BLANC rules only match Android apps when TUN and process matching are enabled; run blanc doctor.",
+		"Place BLANC rules before GEOSITE,cn, DOMAIN-SUFFIX,cn and MATCH; the doctor checks obvious shadowing.",
+		"Doctor rule-order checks are heuristic, not a proof.",
 	}
-	return sortedSet(set)
+	if plan.Stats.Apps == 0 {
+		out = append(out, "Report contains 0 apps; NOIR may have failed or the schema changed.")
+	}
+	if plan.Stats.Endpoints == 0 {
+		out = append(out, "Report contains 0 endpoints; NOIR may have failed or the schema changed.")
+	}
+	if plan.Stats.Blocked == 0 {
+		out = append(out, "No BLANC rules were emitted; this may be a clean device or a classification mismatch.")
+	}
+	return out
 }
 
-func globalBlockedDomains(plan *engine.Plan) []string {
-	set := make(map[string]struct{})
-	for _, finding := range plan.Findings {
-		if finding.Blocked() && finding.Global() {
-			set[finding.Domain] = struct{}{}
-		}
+func summary(plan *engine.Plan, opts Options) []byte {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# BLANC\n\n")
+	fmt.Fprintf(&b, "`%s` · `%s` · %s\n\n", plan.Device.Model, plan.Device.Serial, opts.GeneratedAt.Format(time.RFC3339))
+	fmt.Fprintf(&b, "%d apps · %d endpoints · %d blocked · %d review · %d allowed\n\n",
+		plan.Stats.Apps, plan.Stats.Endpoints, plan.Stats.Blocked, plan.Stats.Review, plan.Stats.Allowed)
+
+	if plan.Stats.Blocked == 0 {
+		fmt.Fprintf(&b, "No rules were emitted. This may be a clean device or a classification mismatch.\n\n")
 	}
-	return sortedSet(set)
+
+	fmt.Fprintf(&b, "## Blocked\n\n")
+	fmt.Fprintf(&b, "| app | domain | class | data | reason |\n")
+	fmt.Fprintf(&b, "|---|---|---|---|---|\n")
+	for _, finding := range plan.Findings {
+		if !finding.Blocked() {
+			continue
+		}
+		fmt.Fprintf(&b, "| `%s` | `%s` | %s | %s | %s |\n",
+			finding.Package, finding.Domain, finding.Class,
+			dataCell(finding.DataTypes), finding.Reason)
+	}
+
+	fmt.Fprintf(&b, "\n## Review\n\n")
+	fmt.Fprintf(&b, "| app | domain | class | reason |\n")
+	fmt.Fprintf(&b, "|---|---|---|---|\n")
+	for _, finding := range plan.Findings {
+		if finding.Verdict != engine.VerdictReview {
+			continue
+		}
+		fmt.Fprintf(&b, "| `%s` | `%s` | %s | %s |\n",
+			finding.Package, finding.Domain, finding.Class, finding.Reason)
+	}
+
+	fmt.Fprintf(&b, "\n## Make it take effect\n\n")
+	fmt.Fprintf(&b, "1. Paste `mihomo.rules.yaml` under `rules:` before `GEOSITE,cn`, `DOMAIN-SUFFIX,cn` and `MATCH`.\n")
+	fmt.Fprintf(&b, "2. On Android, enable TUN and process matching (`find-process-mode: always`).\n")
+	fmt.Fprintf(&b, "3. Run `blanc doctor --config <mihomo.yaml>`.\n")
+	fmt.Fprintf(&b, "4. sing-box 1.11+: insert `singbox-route.json` into your `route` section.\n\n")
+
+	fmt.Fprintf(&b, "> A blocked URL is not privacy. NOIR cannot see vendor-preinstalled services, lower-level frameworks or system processes. Move to a trusted device and OS if you need real assurance.\n\n")
+	fmt.Fprintf(&b, "## Files\n\n")
+	fmt.Fprintf(&b, "`mihomo.rules.yaml` · `singbox.json` · `singbox-route.json` · `SUMMARY.md` · `manifest.json`\n")
+	return []byte(b.String())
+}
+
+func dataCell(dataTypes []string) string {
+	if len(dataTypes) == 0 {
+		return "—"
+	}
+	return strings.Join(dataTypes, ", ")
 }
 
 func sortedSet(set map[string]struct{}) []string {
@@ -214,142 +207,4 @@ func sortedSet(set map[string]struct{}) []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-func warnings(plan *engine.Plan) []string {
-	out := []string{
-		"NOIR and BLANC only see APK endpoints; vendor-preinstalled services, lower-level frameworks and system processes can still report data.",
-		"A blocked URL is not privacy. Move to a trusted device and operating system if you need real assurance.",
-	}
-	if plan.Stats.GlobalDomains > 0 {
-		out = append(out, "Global rules and DNS lists apply to every app; app scope is lost for those domains.")
-	}
-	if plan.Stats.Quarantine > 0 {
-		out = append(out, "netpolicy restricts metered background traffic only; it is not a firewall.")
-	}
-	if plan.Stats.QuarantineSkipped > 0 {
-		out = append(out, "Some quarantine candidates were skipped; see quarantine_skipped.")
-	}
-	return out
-}
-
-func summary(plan *engine.Plan, opts Options) []byte {
-	var b strings.Builder
-	fmt.Fprintf(&b, "# BLANC summary\n\n")
-	fmt.Fprintf(&b, "`%s` · `%s` · %s\n\n", plan.Device.Model, plan.Device.Serial, opts.GeneratedAt.Format(time.RFC3339))
-	fmt.Fprintf(&b, "> A blocked URL is not privacy. NOIR sees APK endpoints only; vendor services, lower-level frameworks and system processes are outside its view. Move to a trusted device and OS if you need real assurance.\n\n")
-
-	fmt.Fprintf(&b, "## Numbers\n\n")
-	fmt.Fprintf(&b, "| apps | findings | blocked | review | allowed | quarantine |\n")
-	fmt.Fprintf(&b, "|---:|---:|---:|---:|---:|---:|\n")
-	fmt.Fprintf(&b, "| %d | %d | %d | %d | %d | %d |\n\n",
-		plan.Stats.Apps, plan.Stats.Findings, plan.Stats.Blocked,
-		plan.Stats.Review, plan.Stats.Allowed, plan.Stats.Quarantine)
-
-	fmt.Fprintf(&b, "## Blocked\n\n")
-	fmt.Fprintf(&b, "| app | uid | domain | class | signal | data | reason | scope |\n")
-	fmt.Fprintf(&b, "|---|---|---|---|---|---|---|---|\n")
-	for _, finding := range plan.Findings {
-		if !finding.Blocked() {
-			continue
-		}
-		fmt.Fprintf(&b, "| `%s` | %s | `%s` | %s | %s | %s | %s | %s |\n",
-			finding.Package, finding.UID, finding.Domain, finding.Class, finding.Signal,
-			strings.Join(finding.DataTypes, ", "), finding.Reason, finding.Scope)
-	}
-
-	reviewed := 0
-	for _, finding := range plan.Findings {
-		if finding.Verdict == engine.VerdictReview && finding.Class == audit.ClassTracker {
-			reviewed++
-		}
-	}
-	if reviewed > 0 {
-		fmt.Fprintf(&b, "\n## Review\n\n")
-		fmt.Fprintf(&b, "| app | domain | signal | reason |\n")
-		fmt.Fprintf(&b, "|---|---|---|---|\n")
-		for _, finding := range plan.Findings {
-			if finding.Verdict != engine.VerdictReview || finding.Class != audit.ClassTracker {
-				continue
-			}
-			fmt.Fprintf(&b, "| `%s` | `%s` | %s | %s |\n",
-				finding.Package, finding.Domain, finding.Signal, finding.Reason)
-		}
-	}
-
-	if len(plan.Quarantine) > 0 {
-		fmt.Fprintf(&b, "\n## Quarantine candidates\n\n")
-		fmt.Fprintf(&b, "| app | uid | score | blocked domains |\n")
-		fmt.Fprintf(&b, "|---|---|---:|---|\n")
-		for _, target := range plan.Quarantine {
-			fmt.Fprintf(&b, "| `%s` | %s | %d | %s |\n",
-				target.Package, target.UID, target.Score, strings.Join(target.BlockedDomains, ", "))
-		}
-	}
-
-	if len(plan.Skipped) > 0 {
-		fmt.Fprintf(&b, "\n## Skipped quarantine\n\n")
-		for _, skipped := range plan.Skipped {
-			fmt.Fprintf(&b, "- `%s` — %s\n", skipped.Package, skipped.Reason)
-		}
-	}
-
-	fmt.Fprintf(&b, "\n## Files\n\n")
-	fmt.Fprintf(&b, "Rules: `singbox.json`, `mihomo.rules.yaml`, `mihomo-provider.yaml`.\n\n")
-	fmt.Fprintf(&b, "DNS fallback: `adguard.txt`, `hosts.txt`, `global-domains.txt`.\n\n")
-	fmt.Fprintf(&b, "Audit: `manifest.json`, `blocked-domains.txt`, `review-domains.txt`, `review-endpoints.txt`.\n\n")
-	fmt.Fprintf(&b, "Optional quarantine: `quarantine.sh`, `rollback.sh`, `quarantine-plan.json`.\n")
-	return []byte(b.String())
-}
-
-func buildQuarantinePlan(plan *engine.Plan) quarantinePlan {
-	arm := quarantinePlan{
-		Version: 1,
-		Device:  plan.Device,
-		Targets: make([]quarantineTarget, 0, len(plan.Quarantine)),
-		Skipped: plan.Skipped,
-		Notes: []string{
-			"netpolicy restricts metered background traffic; it is not a firewall.",
-			"force-stop closes the current process; the app can be reopened.",
-			"appops background restriction is opt-in and may break notifications.",
-			"Review and run quarantine.sh; reverse it with rollback.sh.",
-		},
-	}
-	var backgroundRestrict, appOpsBackground, forceStop bool
-	if plan.Policy != nil {
-		backgroundRestrict = plan.Policy.Quarantine.BackgroundRestrict
-		appOpsBackground = plan.Policy.Quarantine.AppOpsBackground
-		forceStop = plan.Policy.Quarantine.ForceStop
-	}
-	for _, target := range plan.Quarantine {
-		entry := quarantineTarget{
-			Package:        target.Package,
-			UID:            target.UID,
-			System:         target.System,
-			SharedUID:      target.SharedUID,
-			Score:          target.Score,
-			DataTypes:      target.DataTypes,
-			BlockedDomains: target.BlockedDomains,
-			Commands:       []string{},
-			Rollback:       []string{},
-		}
-		if backgroundRestrict {
-			entry.Commands = append(entry.Commands,
-				fmt.Sprintf("cmd netpolicy add restrict-background-blacklist %s", target.UID))
-			entry.Rollback = append(entry.Rollback,
-				fmt.Sprintf("cmd netpolicy remove restrict-background-blacklist %s", target.UID))
-		}
-		if appOpsBackground {
-			entry.Commands = append(entry.Commands,
-				fmt.Sprintf("cmd appops set %s RUN_IN_BACKGROUND ignore", target.Package))
-			entry.Rollback = append(entry.Rollback,
-				fmt.Sprintf("cmd appops set %s RUN_IN_BACKGROUND default", target.Package))
-		}
-		if forceStop {
-			entry.Commands = append(entry.Commands,
-				fmt.Sprintf("am force-stop %s", target.Package))
-		}
-		arm.Targets = append(arm.Targets, entry)
-	}
-	return arm
 }
