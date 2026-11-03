@@ -1,4 +1,4 @@
-module github.com/blanc-sh/blanc
+module github.com/Tchirek/blanc
 
 go 1.24.0
 

@@ -9,12 +9,12 @@ import (
 	"sort"
 	"time"
 
-	"github.com/blanc-sh/blanc/internal/audit"
-	"github.com/blanc-sh/blanc/internal/doctor"
-	"github.com/blanc-sh/blanc/internal/engine"
-	"github.com/blanc-sh/blanc/internal/policy"
-	"github.com/blanc-sh/blanc/internal/render"
-	"github.com/blanc-sh/blanc/internal/version"
+	"github.com/Tchirek/blanc/internal/audit"
+	"github.com/Tchirek/blanc/internal/doctor"
+	"github.com/Tchirek/blanc/internal/engine"
+	"github.com/Tchirek/blanc/internal/policy"
+	"github.com/Tchirek/blanc/internal/render"
+	"github.com/Tchirek/blanc/internal/version"
 )
 
 const tagline = "a modern anti-telescreen tool to block telemetry and data exfiltration URLs."

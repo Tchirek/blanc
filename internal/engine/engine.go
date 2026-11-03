@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/blanc-sh/blanc/internal/audit"
-	"github.com/blanc-sh/blanc/internal/policy"
+	"github.com/Tchirek/blanc/internal/audit"
+	"github.com/Tchirek/blanc/internal/policy"
 )
 
 type Verdict string

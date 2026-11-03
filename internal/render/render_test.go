@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/blanc-sh/blanc/internal/audit"
-	"github.com/blanc-sh/blanc/internal/engine"
-	"github.com/blanc-sh/blanc/internal/policy"
+	"github.com/Tchirek/blanc/internal/audit"
+	"github.com/Tchirek/blanc/internal/engine"
+	"github.com/Tchirek/blanc/internal/policy"
 	"gopkg.in/yaml.v3"
 )
 

@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/blanc-sh/blanc/internal/audit"
+	"github.com/Tchirek/blanc/internal/audit"
 	"gopkg.in/yaml.v3"
 )
 

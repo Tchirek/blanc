@@ -1,7 +1,7 @@
 VERSION ?= dev
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-LDFLAGS = -s -w -X github.com/blanc-sh/blanc/internal/version.Version=$(VERSION) -X github.com/blanc-sh/blanc/internal/version.Commit=$(COMMIT) -X github.com/blanc-sh/blanc/internal/version.Date=$(DATE)
+LDFLAGS = -s -w -X github.com/Tchirek/blanc/internal/version.Version=$(VERSION) -X github.com/Tchirek/blanc/internal/version.Commit=$(COMMIT) -X github.com/Tchirek/blanc/internal/version.Date=$(DATE)
 BINARY ?= dist/blanc
 
 ifeq ($(OS),Windows_NT)

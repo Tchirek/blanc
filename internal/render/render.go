@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/blanc-sh/blanc/internal/audit"
-	"github.com/blanc-sh/blanc/internal/engine"
-	"github.com/blanc-sh/blanc/internal/version"
+	"github.com/Tchirek/blanc/internal/audit"
+	"github.com/Tchirek/blanc/internal/engine"
+	"github.com/Tchirek/blanc/internal/version"
 )
 
 const (

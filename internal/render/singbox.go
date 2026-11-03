@@ -3,7 +3,7 @@ package render
 import (
 	"sort"
 
-	"github.com/blanc-sh/blanc/internal/engine"
+	"github.com/Tchirek/blanc/internal/engine"
 )
 
 type sourceRuleSet struct {

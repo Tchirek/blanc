@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/blanc-sh/blanc/internal/cli"
+	"github.com/Tchirek/blanc/internal/cli"
 )
 
 func main() {

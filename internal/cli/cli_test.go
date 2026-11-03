@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/blanc-sh/blanc/internal/engine"
-	"github.com/blanc-sh/blanc/internal/render"
+	"github.com/Tchirek/blanc/internal/engine"
+	"github.com/Tchirek/blanc/internal/render"
 )
 
 func run(args ...string) (int, string, string) {

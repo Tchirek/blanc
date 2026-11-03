@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/blanc-sh/blanc/internal/engine"
+	"github.com/Tchirek/blanc/internal/engine"
 )
 
 func mihomoRules(plan *engine.Plan) []byte {
