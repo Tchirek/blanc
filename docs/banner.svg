@@ -29,7 +29,7 @@
     <text x="58" y="162" fill="#f2f2f2" font-size="112" font-weight="700" letter-spacing="18">BLANC</text>
     <rect x="64" y="186" width="430" height="3" fill="#ff3b30"/>
     <text x="64" y="224" fill="#a8a8a8" font-size="17" letter-spacing="4">WHITE NOISE FOR ANDROID TELEMETRY</text>
-    <text x="64" y="258" fill="#5f5f5f" font-size="13" letter-spacing="3">APP-SCOPED REJECT · REVERSIBLE ARM · NO CLOUD</text>
+    <text x="64" y="258" fill="#5f5f5f" font-size="13" letter-spacing="3">APP-SCOPED REJECT · REVIEWABLE SCRIPTS · NO CLOUD</text>
 
     <rect x="742" y="44" width="1" height="212" fill="#242424"/>
     <text x="792" y="94" fill="#e8e8e8" font-size="25" letter-spacing="8">白き紙</text>
