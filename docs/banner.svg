@@ -3,11 +3,11 @@
   <desc id="desc">BLANC wordmark, red underline, vertical divider, and a three-line Japanese haiku.</desc>
   <rect width="1200" height="300" fill="#050505"/>
   <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
-    <text x="58" y="162" fill="#f2f2f2" font-size="112" font-weight="700" letter-spacing="18">BLANC</text>
-    <rect x="64" y="186" width="430" height="3" fill="#ff3b30"/>
-    <rect x="742" y="44" width="1" height="212" fill="#242424"/>
-    <text x="792" y="94" fill="#e8e8e8" font-size="25" letter-spacing="8">白き紙</text>
-    <text x="792" y="142" fill="#e8e8e8" font-size="25" letter-spacing="8">通信の闇を</text>
-    <text x="792" y="190" fill="#e8e8e8" font-size="25" letter-spacing="8">断ち切ろう</text>
+    <text x="206" y="178" fill="#f2f2f2" font-size="120" font-weight="700" textLength="432" lengthAdjust="spacing">BLANC</text>
+    <rect x="210" y="204" width="424" height="3" fill="#ff3b30"/>
+    <rect x="726" y="70" width="1" height="160" fill="#242424"/>
+    <text x="815" y="106" fill="#e8e8e8" font-size="26" letter-spacing="7">白き紙</text>
+    <text x="815" y="156" fill="#e8e8e8" font-size="26" letter-spacing="7">通信の闇を</text>
+    <text x="815" y="206" fill="#e8e8e8" font-size="26" letter-spacing="7">断ち切ろう</text>
   </g>
 </svg>
