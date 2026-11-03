@@ -41,50 +41,6 @@ func LoadDecisions(path string) (map[string]Verdict, error) {
 	return doc.Decisions, nil
 }
 
-func SaveDecisions(path string, decisions map[string]Verdict) error {
-	if decisions == nil {
-		decisions = map[string]Verdict{}
-	}
-	raw, err := json.MarshalIndent(decisionDocument{Version: 1, Decisions: decisions}, "", "  ")
-	if err != nil {
-		return err
-	}
-	raw = append(raw, '\n')
-	if err := os.WriteFile(path, raw, 0o600); err != nil {
-		return fmt.Errorf("write decisions: %w", err)
-	}
-	return nil
-}
-
-// 白黒を
-// 人の指先に
-// 委ねけり
-func ApplyDecisions(plan *Plan, decisions map[string]Verdict) (*Plan, error) {
-	if plan == nil {
-		return nil, fmt.Errorf("engine: nil plan")
-	}
-	for id, verdict := range decisions {
-		if !validVerdict(verdict) {
-			return nil, fmt.Errorf("engine: invalid verdict %q for %s", verdict, id)
-		}
-	}
-	clone := *plan
-	clone.Findings = append([]Finding(nil), plan.Findings...)
-	clone.Ignored = append([]Ignored(nil), plan.Ignored...)
-	clone.Decisions = copyDecisions(decisions)
-
-	for i := range clone.Findings {
-		finding := &clone.Findings[i]
-		decision, ok := decisions[finding.ID]
-		if !ok || finding.Scope == ScopeGlobal {
-			continue
-		}
-		applyDecision(finding, decision)
-	}
-	recompute(&clone)
-	return &clone, nil
-}
-
 func validVerdict(verdict Verdict) bool {
 	switch verdict {
 	case VerdictBlock, VerdictReview, VerdictAllow:

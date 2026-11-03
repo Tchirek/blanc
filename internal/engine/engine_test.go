@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/blanc-sh/blanc/internal/audit"
@@ -225,65 +224,49 @@ func TestQuarantineFilters(t *testing.T) {
 	})
 }
 
-func TestApplyDecisions(t *testing.T) {
-	plan := compileFixture(t, nil)
-	decisions := map[string]Verdict{
-		"com.nightmarket.shop|alog.umeng.com":                VerdictAllow,
-		"jp.quietreader.app|api.quietreader.jp":              VerdictBlock,
-		"cn.mailroom.app|c.umengcloud.com":                   VerdictReview,
-		"com.vendorwatch.telemetry|analytics.vendorwatch.cn": VerdictAllow,
+func TestQuarantineDisabled(t *testing.T) {
+	plan := compileFixture(t, func(p *policy.Policy) {
+		p.Quarantine.BackgroundRestrict = false
+		p.Quarantine.AppOpsBackground = false
+		p.Quarantine.ForceStop = false
+	})
+	if plan.Stats.Quarantine != 0 || plan.Stats.QuarantineSkipped != 0 || len(plan.Quarantine) != 0 {
+		t.Fatalf("stats = %+v quarantine = %+v", plan.Stats, plan.Quarantine)
 	}
-	updated, err := ApplyDecisions(plan, decisions)
+}
+
+func TestDecisionOverrides(t *testing.T) {
+	report, pol := fixture(t)
+	plan, err := Compile(report, pol, Options{Overrides: map[string]Verdict{
+		"com.nightmarket.shop|alog.umeng.com":   VerdictAllow,
+		"jp.quietreader.app|api.quietreader.jp": VerdictBlock,
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Stats.Blocked != 3 || updated.Stats.Quarantine != 2 {
-		t.Fatalf("stats = %+v", updated.Stats)
-	}
-	if got := mustFind(t, updated, "com.nightmarket.shop", "alog.umeng.com"); got.Verdict != VerdictAllow || got.AutoVerdict != VerdictBlock {
+	if got := mustFind(t, plan, "com.nightmarket.shop", "alog.umeng.com"); got.Verdict != VerdictAllow || got.AutoVerdict != VerdictBlock {
 		t.Fatalf("alog = %+v", got)
 	}
-	if got := mustFind(t, updated, "jp.quietreader.app", "api.quietreader.jp"); !got.Blocked() {
+	if got := mustFind(t, plan, "jp.quietreader.app", "api.quietreader.jp"); !got.Blocked() {
 		t.Fatalf("reader api = %+v", got)
 	}
-	if got := mustFind(t, updated, "cn.mailroom.app", "c.umengcloud.com"); got.Verdict != VerdictReview {
-		t.Fatalf("mailroom = %+v", got)
-	}
-	if _, err := ApplyDecisions(plan, map[string]Verdict{"com.nightmarket.shop|alog.umeng.com": "wat"}); err == nil {
-		t.Fatal("expected invalid verdict error")
+	if plan.Stats.Blocked != 5 {
+		t.Fatalf("stats = %+v", plan.Stats)
 	}
 }
 
-func TestGlobalFindingIsLocked(t *testing.T) {
-	plan := compileFixture(t, func(p *policy.Policy) {
-		p.Compile.Globalize = "trackers"
-	})
-	updated, err := ApplyDecisions(plan, map[string]Verdict{
+func TestDecisionCannotUnlockGlobal(t *testing.T) {
+	report, pol := fixture(t)
+	pol.Compile.Globalize = "trackers"
+	plan, err := Compile(report, pol, Options{Overrides: map[string]Verdict{
 		"com.nightmarket.shop|alog.umeng.com": VerdictAllow,
-	})
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := mustFind(t, updated, "com.nightmarket.shop", "alog.umeng.com")
+	got := mustFind(t, plan, "com.nightmarket.shop", "alog.umeng.com")
 	if got.Verdict != VerdictBlock || !got.Global() {
 		t.Fatalf("global finding was unlocked: %+v", got)
-	}
-}
-
-func TestDecisionsRoundTrip(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "decisions.json")
-	in := map[string]Verdict{
-		"com.nightmarket.shop|alog.umeng.com": VerdictAllow,
-	}
-	if err := SaveDecisions(path, in); err != nil {
-		t.Fatal(err)
-	}
-	out, err := LoadDecisions(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(out) != 1 || out["com.nightmarket.shop|alog.umeng.com"] != VerdictAllow {
-		t.Fatalf("decisions = %+v", out)
 	}
 }
 

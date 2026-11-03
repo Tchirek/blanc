@@ -1,7 +1,6 @@
 package audit
 
 import (
-	"sort"
 	"strings"
 )
 
@@ -114,19 +113,6 @@ func KnownDataTypes() []string {
 
 func OrderedDataTypes(set map[string]struct{}) []string {
 	return orderedDataTypes(set)
-}
-
-func KnownCategories() []string {
-	set := make(map[string]struct{})
-	for _, slug := range categoryAliases {
-		set[slug] = struct{}{}
-	}
-	out := make([]string, 0, len(set))
-	for slug := range set {
-		out = append(out, slug)
-	}
-	sort.Strings(out)
-	return out
 }
 
 func orderedDataTypes(set map[string]struct{}) []string {

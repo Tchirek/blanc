@@ -154,7 +154,7 @@ func Compile(report *audit.Report, pol *policy.Policy, opts Options) (*Plan, err
 			evidence := groups[host]
 			classification := audit.ClassifyHost(host)
 			if classification.Class == audit.ClassReview && len(evidence.uploads) > 0 {
-				classification.Signal = "upload:" + evidence.uploads[0]
+				classification = audit.ClassifyEndpoint(audit.Endpoint{Host: host, Path: "/" + evidence.uploads[0]})
 			}
 
 			verdict, scope, reason := decide(app, host, classification, sensitivity, pol)
@@ -386,21 +386,22 @@ func recompute(plan *Plan) {
 
 	plan.Quarantine = nil
 	plan.Skipped = nil
-	if plan.Policy != nil {
+	if plan.Policy != nil && quarantineEnabled(plan.Policy) {
+		q := plan.Policy.Quarantine
 		for pkg, domains := range blockedByApp {
 			finding := meta[pkg]
-			if len(domains) < plan.Policy.Quarantine.MinBlockedDomains {
+			if len(domains) < q.MinBlockedDomains {
 				continue
 			}
 			if plan.Policy.Apps[pkg].Mode == "allow" {
 				plan.Skipped = append(plan.Skipped, Skipped{Package: pkg, UID: finding.UID, Reason: "app mode allow"})
 				continue
 			}
-			if finding.System && !plan.Policy.Quarantine.IncludeSystem {
+			if finding.System && !q.IncludeSystem {
 				plan.Skipped = append(plan.Skipped, Skipped{Package: pkg, UID: finding.UID, Reason: "system app"})
 				continue
 			}
-			if finding.SharedUID != "" && !plan.Policy.Quarantine.IncludeSharedUID {
+			if finding.SharedUID != "" && !q.IncludeSharedUID {
 				plan.Skipped = append(plan.Skipped, Skipped{Package: pkg, UID: finding.UID, Reason: "shared UID"})
 				continue
 			}
@@ -432,6 +433,11 @@ func recompute(plan *Plan) {
 	stats.Quarantine = len(plan.Quarantine)
 	stats.QuarantineSkipped = len(plan.Skipped)
 	plan.Stats = stats
+}
+
+func quarantineEnabled(p *policy.Policy) bool {
+	q := p.Quarantine
+	return q.BackgroundRestrict || q.AppOpsBackground || q.ForceStop
 }
 
 func findingID(pkg, domain string) string {

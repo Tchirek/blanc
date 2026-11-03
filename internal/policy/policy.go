@@ -26,7 +26,6 @@ type Policy struct {
 	Quarantine Quarantine                `yaml:"quarantine"`
 
 	Hash string `yaml:"-"`
-	Raw  []byte `yaml:"-"`
 	Path string `yaml:"-"`
 }
 
@@ -118,7 +117,6 @@ func Load(path string) (*Policy, error) {
 	}
 	sum := sha256.Sum256(raw)
 	p.Hash = hex.EncodeToString(sum[:])
-	p.Raw = raw
 	p.Path = path
 	return p, nil
 }
