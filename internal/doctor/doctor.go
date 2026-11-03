@@ -232,28 +232,37 @@ func checkPresence(cfg *config, rules []string) Check {
 		check.Message = "config has no rules list"
 		return check
 	}
-	want := make(map[string]struct{}, len(rules))
+
+	want := make(map[string]string, len(rules))
 	for _, rule := range rules {
-		want[rule] = struct{}{}
+		want[normalizeRule(rule)] = rule
 	}
-	found := 0
+	matched := make(map[string]struct{}, len(rules))
 	firstLine := 0
 	for _, item := range cfg.Rules {
-		if _, ok := want[item.Value]; ok {
-			found++
+		normalized := normalizeRule(item.Value)
+		if _, ok := want[normalized]; ok {
+			matched[normalized] = struct{}{}
 			if firstLine == 0 {
 				firstLine = item.Line
 			}
 		}
 	}
+	found := len(matched)
 	check.Line = firstLine
 	switch {
 	case found == 0:
 		check.Status = StatusFail
 		check.Message = fmt.Sprintf("BLANC rules not found (0/%d)", len(rules))
 	case found < len(rules):
+		missing := make([]string, 0, len(rules)-found)
+		for _, rule := range rules {
+			if _, ok := matched[normalizeRule(rule)]; !ok {
+				missing = append(missing, rule)
+			}
+		}
 		check.Status = StatusFail
-		check.Message = fmt.Sprintf("only %d/%d BLANC rules found", found, len(rules))
+		check.Message = fmt.Sprintf("only %d/%d BLANC rules found; missing %s", found, len(rules), summarizeRules(missing, 2))
 	default:
 		check.Status = StatusOK
 		check.Message = fmt.Sprintf("%d/%d BLANC rules present", found, len(rules))
@@ -262,46 +271,50 @@ func checkPresence(cfg *config, rules []string) Check {
 }
 
 func checkOrder(cfg *config, rules []string) []Check {
+	if len(rules) == 0 || len(cfg.Rules) == 0 {
+		return nil
+	}
 	want := make(map[string]struct{}, len(rules))
 	for _, rule := range rules {
-		want[rule] = struct{}{}
+		want[normalizeRule(rule)] = struct{}{}
 	}
 	first := -1
 	for i, item := range cfg.Rules {
-		if _, ok := want[item.Value]; ok {
+		if _, ok := want[normalizeRule(item.Value)]; ok {
 			first = i
 			break
 		}
 	}
-	if first < 0 {
-		return nil
-	}
 
+	limit := len(cfg.Rules)
+	if first >= 0 {
+		limit = first
+	}
 	packages, domains := generatedTargets(rules)
 	checks := make([]Check, 0)
-	for i := 0; i < first; i++ {
+	for i := 0; i < limit; i++ {
 		item := cfg.Rules[i]
 		kind, value := splitRule(item.Value)
 		switch kind {
 		case "MATCH":
 			checks = append(checks, Check{
 				Name: "rule order", Status: StatusFail, Line: item.Line,
-				Message: "MATCH before BLANC rules swallows all later rules",
+				Message: "MATCH swallows all later rules",
 			})
 		case "GEOSITE":
 			status := StatusWarn
-			message := "GEOSITE before BLANC may shadow matching domains"
+			message := "GEOSITE may shadow matching domains"
 			if strings.EqualFold(value, "cn") {
 				status = StatusFail
-				message = "GEOSITE,cn before BLANC shadows Chinese tracker domains"
+				message = "GEOSITE,cn shadows Chinese tracker domains"
 			}
 			checks = append(checks, Check{Name: "rule order", Status: status, Line: item.Line, Message: message})
 		case "GEOIP":
 			status := StatusWarn
-			message := "GEOIP before BLANC may shadow matching destinations"
+			message := "GEOIP may shadow matching destinations"
 			if strings.EqualFold(value, "cn") {
 				status = StatusFail
-				message = "GEOIP,CN before BLANC shadows Chinese destinations"
+				message = "GEOIP,CN shadows Chinese destinations"
 			}
 			checks = append(checks, Check{Name: "rule order", Status: status, Line: item.Line, Message: message})
 		case "DOMAIN-SUFFIX":
@@ -324,7 +337,7 @@ func checkOrder(cfg *config, rules []string) []Check {
 				}
 			}
 			status := StatusWarn
-			message := "DOMAIN-KEYWORD before BLANC may shadow matching domains"
+			message := "DOMAIN-KEYWORD may shadow matching domains"
 			if shadowed {
 				status = StatusFail
 				message = "DOMAIN-KEYWORD shadows a BLANC domain: " + value
@@ -334,27 +347,42 @@ func checkOrder(cfg *config, rules []string) []Check {
 			if contains(packages, value) {
 				checks = append(checks, Check{
 					Name: "rule order", Status: StatusFail, Line: item.Line,
-					Message: "PROCESS-NAME matches a BLANC app before BLANC rules: " + value,
+					Message: "PROCESS-NAME matches a BLANC app: " + value,
 				})
 			}
 		case "PROCESS-NAME-WILDCARD", "PROCESS-NAME-REGEX", "PROCESS-PATH", "PROCESS-PATH-REGEX", "UID":
 			checks = append(checks, Check{
 				Name: "rule order", Status: StatusWarn, Line: item.Line,
-				Message: kind + " before BLANC; verify it does not swallow the app",
+				Message: kind + " may swallow the app; verify",
 			})
 		case "RULE-SET", "SUB-RULE":
 			checks = append(checks, Check{
 				Name: "rule order", Status: StatusWarn, Line: item.Line,
-				Message: kind + " before BLANC may shadow; doctor does not expand it",
+				Message: kind + " may shadow; doctor does not expand it",
 			})
 		case "AND", "OR", "NOT":
 			checks = append(checks, Check{
 				Name: "rule order", Status: StatusWarn, Line: item.Line,
-				Message: "logical rule before BLANC; verify it does not shadow",
+				Message: "logical rule may shadow; verify",
 			})
 		}
 	}
-	if len(checks) == 0 {
+
+	for i := range checks {
+		if first < 0 {
+			checks[i].Message = "BLANC rules are not in the config yet; paste before this rule: " + checks[i].Message
+		} else {
+			checks[i].Message = "before BLANC: " + checks[i].Message
+		}
+	}
+	if first < 0 {
+		if len(checks) == 0 {
+			checks = append(checks, Check{
+				Name: "rule order", Status: StatusWarn,
+				Message: "BLANC rules are not in the config yet; no known shadowing rule found",
+			})
+		}
+	} else if len(checks) == 0 {
 		checks = append(checks, Check{
 			Name: "rule order", Status: StatusOK, Line: cfg.Rules[first].Line,
 			Message: "no obvious shadowing rule before BLANC",
@@ -371,7 +399,7 @@ func checkSuffix(item rule, value string, domains []string) Check {
 	if !strings.Contains(host, ".") {
 		return Check{
 			Name: "rule order", Status: StatusFail, Line: item.Line,
-			Message: "TLD-wide DOMAIN-SUFFIX before BLANC: " + value,
+			Message: "TLD-wide DOMAIN-SUFFIX: " + value,
 		}
 	}
 	for _, domain := range domains {
@@ -389,7 +417,7 @@ func generatedTargets(rules []string) ([]string, []string) {
 	packages := make([]string, 0)
 	domains := make([]string, 0)
 	for _, rule := range rules {
-		match := generatedPattern.FindStringSubmatch(rule)
+		match := generatedPattern.FindStringSubmatch(normalizeRule(rule))
 		if match == nil {
 			continue
 		}
@@ -397,6 +425,27 @@ func generatedTargets(rules []string) ([]string, []string) {
 		domains = append(domains, match[2])
 	}
 	return packages, domains
+}
+
+func normalizeRule(value string) string {
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case ' ', '\t', '\r', '\n':
+			return -1
+		default:
+			return r
+		}
+	}, value)
+}
+
+func summarizeRules(rules []string, limit int) string {
+	if len(rules) == 0 {
+		return ""
+	}
+	if len(rules) <= limit {
+		return strings.Join(rules, "; ")
+	}
+	return fmt.Sprintf("%s (+%d more)", strings.Join(rules[:limit], "; "), len(rules)-limit)
 }
 
 func splitRule(value string) (string, string) {

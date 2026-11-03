@@ -36,13 +36,62 @@ rules:
 	}
 }
 
+func TestRunNormalizesWhitespace(t *testing.T) {
+	config := `find-process-mode: always
+tun:
+  enable: true
+rules:
+  - AND, ((PROCESS-NAME,com.a),(DOMAIN-SUFFIX,tracker.a)), REJECT
+  - AND,((PROCESS-NAME,com.b), (DOMAIN-SUFFIX,tracker.b)),REJECT
+  - MATCH,DIRECT
+`
+	report := runTest(t, config)
+	if report.Fails() != 0 || report.Warnings() != 0 {
+		t.Fatalf("checks = %+v", report.Checks)
+	}
+	if !hasCheck(report, StatusOK, "2/2 BLANC rules") {
+		t.Fatalf("checks = %+v", report.Checks)
+	}
+}
+
+func TestRunNamesMissingRules(t *testing.T) {
+	config := `find-process-mode: always
+tun:
+  enable: true
+rules:
+  - AND,((PROCESS-NAME,com.a),(DOMAIN-SUFFIX,tracker.a)),REJECT
+  - MATCH,DIRECT
+`
+	report := runTest(t, config)
+	if !hasCheck(report, StatusFail, "only 1/2") || !hasCheck(report, StatusFail, "com.b") {
+		t.Fatalf("checks = %+v", report.Checks)
+	}
+}
+
+func TestOrderCheckWithoutPresence(t *testing.T) {
+	config := `find-process-mode: always
+tun:
+  enable: true
+rules:
+  - GEOSITE,cn,DIRECT
+  - MATCH,DIRECT
+`
+	report := runTest(t, config)
+	if !hasCheck(report, StatusFail, "BLANC rules not found") {
+		t.Fatalf("checks = %+v", report.Checks)
+	}
+	if !hasCheck(report, StatusFail, "not in the config yet") || !hasCheck(report, StatusFail, "GEOSITE,cn") {
+		t.Fatalf("order check skipped: %+v", report.Checks)
+	}
+}
+
 func TestRunDetectsShadowing(t *testing.T) {
 	cases := []struct {
 		name   string
 		before string
 		want   string
 	}{
-		{"matcher", "MATCH,DIRECT", "MATCH before"},
+		{"matcher", "MATCH,DIRECT", "MATCH"},
 		{"geosite cn", "GEOSITE,cn,DIRECT", "GEOSITE,cn"},
 		{"geoip cn", "GEOIP,CN,DIRECT", "GEOIP,CN"},
 		{"tld suffix", "DOMAIN-SUFFIX,cn,DIRECT", "TLD-wide"},
