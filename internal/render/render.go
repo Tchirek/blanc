@@ -141,6 +141,9 @@ func warnings(plan *engine.Plan) []string {
 	if plan.Stats.Endpoints == 0 {
 		out = append(out, "Report contains 0 endpoints; NOIR may have failed or the schema changed.")
 	}
+	if plan.Stats.Findings == 0 {
+		out = append(out, "No endpoints were classified; check that the NOIR domain export matches the report.")
+	}
 	if plan.Stats.Blocked == 0 {
 		out = append(out, "No BLANC rules were emitted; this may be a clean device or a classification mismatch.")
 	}
@@ -151,9 +154,13 @@ func summary(plan *engine.Plan, opts Options) []byte {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# BLANC\n\n")
 	fmt.Fprintf(&b, "`%s` · `%s` · %s\n\n", plan.Device.Model, plan.Device.Serial, opts.GeneratedAt.Format(time.RFC3339))
-	fmt.Fprintf(&b, "%d apps · %d endpoints · %d blocked · %d review · %d allowed\n\n",
-		plan.Stats.Apps, plan.Stats.Endpoints, plan.Stats.Blocked, plan.Stats.Review, plan.Stats.Allowed)
+	fmt.Fprintf(&b, "%d apps · %d endpoints · %d findings · %d blocked · %d review · %d allowed · %d ignored\n\n",
+		plan.Stats.Apps, plan.Stats.Endpoints, plan.Stats.Findings,
+		plan.Stats.Blocked, plan.Stats.Review, plan.Stats.Allowed, plan.Stats.Ignored)
 
+	if plan.Stats.Findings == 0 {
+		fmt.Fprintf(&b, "No endpoints matched the NOIR domain export.\n\n")
+	}
 	if plan.Stats.Blocked == 0 {
 		fmt.Fprintf(&b, "No rules were emitted. This may be a clean device or a classification mismatch.\n\n")
 	}

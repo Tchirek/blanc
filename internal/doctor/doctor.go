@@ -337,10 +337,10 @@ func checkOrder(cfg *config, rules []string) []Check {
 					Message: "PROCESS-NAME matches a BLANC app before BLANC rules: " + value,
 				})
 			}
-		case "PROCESS-NAME-WILDCARD", "PROCESS-NAME-REGEX":
+		case "PROCESS-NAME-WILDCARD", "PROCESS-NAME-REGEX", "PROCESS-PATH", "PROCESS-PATH-REGEX", "UID":
 			checks = append(checks, Check{
 				Name: "rule order", Status: StatusWarn, Line: item.Line,
-				Message: "wildcard process rule before BLANC; verify it does not swallow the app",
+				Message: kind + " before BLANC; verify it does not swallow the app",
 			})
 		case "RULE-SET", "SUB-RULE":
 			checks = append(checks, Check{

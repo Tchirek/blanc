@@ -169,6 +169,9 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 	}
 
 	printSummary(stdout, plan, domains, *policyPath, *reportPath, *outPath)
+	if plan.Stats.Findings == 0 {
+		fmt.Fprintln(stderr, "blanc compile: no endpoints matched the NOIR domain export; check domains-*.txt")
+	}
 	if plan.Stats.Blocked == 0 {
 		fmt.Fprintln(stderr, "blanc compile: no BLANC rules were emitted; inspect SUMMARY.md and manifest.json")
 	}
@@ -229,15 +232,18 @@ func printSummary(w io.Writer, plan *engine.Plan, domains *audit.DomainSet, poli
 	fmt.Fprintf(w, "inputs    %d apps · %d endpoints\n", plan.Stats.Apps, plan.Stats.Endpoints)
 	fmt.Fprintf(w, "classify  noir · tracker %d · functional %d · review %d\n",
 		domains.Count(audit.ClassTracker), domains.Count(audit.ClassFunctional), domains.Count(audit.ClassReview))
-	fmt.Fprintf(w, "findings  %d · blocked %d · review %d · allowed %d\n",
-		plan.Stats.Findings, plan.Stats.Blocked, plan.Stats.Review, plan.Stats.Allowed)
+	fmt.Fprintf(w, "findings  %d · blocked %d · review %d · allowed %d · ignored %d\n",
+		plan.Stats.Findings, plan.Stats.Blocked, plan.Stats.Review, plan.Stats.Allowed, plan.Stats.Ignored)
 	if plan.Stats.Blocked > 0 {
 		fmt.Fprintf(w, "rules     %s\n", filepath.Join(outPath, render.FileMihomo))
 		fmt.Fprintf(w, "singbox   %s\n", filepath.Join(outPath, render.FileSingbox))
+		fmt.Fprintln(w, "next      paste rules before GEOSITE,cn / MATCH; run blanc doctor --config <mihomo.yaml>")
 	} else {
 		fmt.Fprintln(w, "rules     none")
+		fmt.Fprintln(w, "next      inspect SUMMARY.md and manifest.json; no rules were emitted")
 	}
-	fmt.Fprintf(w, "next      paste rules before GEOSITE,cn / MATCH; run blanc doctor --config <mihomo.yaml>\n")
+	fmt.Fprintf(w, "audit     %s · %s\n",
+		filepath.Join(outPath, render.FileSummary), filepath.Join(outPath, render.FileManifest))
 	fmt.Fprintln(w, "safety    a blocked URL is not privacy; NOIR cannot see vendor services, frameworks or system processes.")
 }
 
