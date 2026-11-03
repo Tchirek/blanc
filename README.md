@@ -9,7 +9,7 @@
 <p align="center">
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-111111"></a>
   <img alt="Go" src="https://img.shields.io/badge/Go-1.24+-111111">
-  <img alt="version" src="https://img.shields.io/badge/version-0.2.0-111111">
+  <img alt="status" src="https://img.shields.io/badge/status-unreleased-111111">
 </p>
 
 BLANC is a small companion to [NOIR](https://github.com/Verlintas/NOIR). It does one job: turn NOIR's domain export into **per-app** Mihomo and sing-box reject rules. It does not scan, run as a daemon, or touch the device.
@@ -94,6 +94,14 @@ sing-box 1.11+:
 }
 ```
 
+`singbox.json` writes each host twice: `domain` for the exact host and `.host`
+in `domain_suffix` for subdomains. Do not collapse them; one field alone misses
+either the bare host or its subdomains, and bare-suffix behavior has changed
+across sing-box versions.
+
+The route fragment's `path` follows `--out`; rewrite it if the rule-set lives
+elsewhere on the device.
+
 ## Make sure it takes effect
 
 `blanc doctor` reads your Mihomo config and checks a narrow set of concrete facts:
@@ -132,9 +140,10 @@ See [docs/policy.md](docs/policy.md) or [examples/blanc.yaml](examples/blanc.yam
 
 ## Why Go
 
-The proxies are Go, the output is deterministic, and a single static binary is
-enough. There is deliberately no TUI, daemon or server: the rule file and the
-doctor are the interface.
+The proxies are Go and a single static binary is enough. The rule files are
+deterministic; the manifest records a timestamp and input hashes. There is
+deliberately no TUI, daemon or server: the rule file and the doctor are the
+interface.
 
 <p align="center">
   <a href="https://trendshift.io"><img src="docs/ai-slop-67.svg" alt="AI-slop Of The Day #67" width="250"></a>
