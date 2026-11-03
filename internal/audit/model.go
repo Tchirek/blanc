@@ -79,6 +79,10 @@ func Parse(raw []byte) (*Report, error) {
 	return &report, nil
 }
 
+func ValidPackage(name string) bool {
+	return packagePattern.MatchString(name)
+}
+
 func (r *Report) validate() error {
 	seen := make(map[string]struct{}, len(r.Apps))
 	for i, app := range r.Apps {

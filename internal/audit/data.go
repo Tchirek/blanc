@@ -112,6 +112,10 @@ func KnownDataTypes() []string {
 	return append([]string(nil), dataTypeOrder...)
 }
 
+func OrderedDataTypes(set map[string]struct{}) []string {
+	return orderedDataTypes(set)
+}
+
 func KnownCategories() []string {
 	set := make(map[string]struct{})
 	for _, slug := range categoryAliases {
