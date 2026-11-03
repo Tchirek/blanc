@@ -1,0 +1,54 @@
+version: 1
+
+# 白き紙
+# 越えてはならぬ
+# 線を引く
+compile:
+  globalize: trackers
+  include_system: true
+
+# 砂の名を
+# 人の言葉に
+# 置き換える
+sensitive:
+  require: true
+  data_types:
+    - location
+    - contacts
+    - sms
+    - identity
+  categories:
+    - telemetry
+    - ads
+  min_score: 10
+
+# 影を消す
+# アプリの窓に
+# 鍵をかけ
+apps:
+  com.example.reader: allow
+  com.example.shop:
+    mode: block
+    block:
+      - qa.analytics.widgets.cn
+    allow:
+      - login.widgets.cn
+
+# 門を閉じ
+# 内なる声を
+# 守る朝
+domains:
+  shared.analytics.widgets.cn: allow
+  consent.analytics.widgets.cn:
+    action: block
+
+# 夜の網
+# 眠る端末に
+# 静けさを
+quarantine:
+  min_blocked_domains: 2
+  include_system: false
+  include_shared_uid: false
+  background_restrict: true
+  appops_background: false
+  force_stop: true

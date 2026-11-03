@@ -12,87 +12,75 @@
   <img alt="status" src="https://img.shields.io/badge/status-alpha-8a8a8a">
 </p>
 
-BLANC turns a [NOIR](https://github.com/Verlintas/NOIR) audit into app-scoped block rules for Mihomo, sing-box and DNS filters, then offers a reversible ADB quarantine for the worst offenders.
-
-This README is intentionally short. The code, tests, and generated manifest are the documentation.
+BLANC is a small companion to [NOIR](https://github.com/Verlintas/NOIR). NOIR finds the endpoints; BLANC turns them into app-scoped rules for Mihomo, sing-box and DNS filters. It does not scan, run as a daemon, or touch the device.
 
 > [!WARNING]
-> BLANC is not a telescreen-proof phone, and a blocked domain is not privacy.
-> NOIR only sees what is visible in APKs; it cannot see vendor-preinstalled
-> system services, lower-level frameworks, baseband, or system processes that
-> report data. Rules can also break apps. If you need real assurance, move to a
-> trusted device and a trusted operating system as soon as you can.
+> A blocked URL is not privacy. NOIR only sees what is visible in APKs; it
+> cannot see vendor-preinstalled services, lower-level frameworks, baseband or
+> system processes that report data. Rules can break apps. If you need real
+> assurance, move to a trusted device and a trusted operating system as soon as
+> you can.
 
 ## Build
 
 ```sh
-git clone <this-repo> blanc
-cd blanc
 go build -trimpath -o blanc ./cmd/blanc
 ```
 
-Requires Go 1.24+. No CGO, no external runtime.
+Go 1.24+. No CGO, no runtime. The only direct dependency is `gopkg.in/yaml.v3`.
 
 ## Quick start
 
 ```sh
 noir scan --out noir-out
 ./blanc init
-./blanc compile --report noir-out/report.json --policy blanc.yaml --out blanc-out
-./blanc serve --dir blanc-out --lan
+./blanc compile --report noir-out/report.json --out blanc-out
 ```
 
-`blanc compile` writes:
+Review `blanc-out/SUMMARY.md` and `blanc-out/manifest.json` before importing anything.
+
+## Artifacts
 
 | file | use |
 |---|---|
-| `singbox.json` | app-scoped source rule-set (sing-box 1.11+) |
-| `singbox-route.json` | route fragment that rejects the rule-set |
+| `singbox.json`, `singbox-route.json` | app-scoped source rule-set + route fragment |
 | `mihomo.rules.yaml` | logical rules to paste into Mihomo's `rules:` |
-| `mihomo-provider.yaml` | global domains, importable as a classical rule-provider |
-| `adguard.txt`, `hosts.txt` | global DNS filters |
-| `blocked-domains.txt` | every blocked domain, app scope discarded |
-| `manifest.json` | decisions, evidence, hashes, quarantine plan |
-| `SUMMARY.md` | the short human-readable version |
+| `mihomo-provider.yaml` | global domains only, importable as a classical provider |
+| `adguard.txt`, `hosts.txt`, `global-domains.txt` | DNS fallback; empty by default |
+| `quarantine.sh`, `rollback.sh`, `quarantine-plan.json` | optional, review before running |
+| `manifest.json`, `SUMMARY.md`, `decisions.json` | decisions, evidence and hashes |
+| `blocked-domains.txt`, `review-domains.txt`, `review-endpoints.txt` | audit lists |
 
-The default policy is **app-scoped**: a tracker is rejected only for the app that
-was caught carrying it. DNS filters cannot express app scope; they stay empty
-until you set `compile.globalize` in `blanc.yaml`. Read `docs/policy.md` before
-you do.
+The default is **app-scoped**: a tracker is rejected only for the app that was seen carrying it. `blocked-domains.txt` is the union of every block and loses app scope; do not import it blindly. DNS filters cannot express app scope. They stay empty until you set `compile.globalize` in `blanc.yaml`; at that point app scope is gone for those domains.
 
-## Commands
-
-| command | purpose |
-|---|---|
-| `blanc init` | write a commented `blanc.yaml` |
-| `blanc compile` | audit → rules, lists and manifest |
-| `blanc tui` | review and override decisions in the terminal |
-| `blanc serve` | serve rules over LAN with a QR code and hot rebuild |
-| `blanc arm` | restrict background data for selected apps over ADB |
-| `blanc disarm` | undo the latest arm journal |
-
-`arm` only uses `cmd netpolicy` and never edits Private DNS, appops, or
-uninstalls anything. The plan is printed before execution; `--apply` is
-required. Shared-UID and system apps are skipped unless you opt in.
+`review-domains.txt` lists tracker hits left in review. `review-endpoints.txt`
+lists upload-looking endpoints that BLANC did not auto-block, including unknown
+hosts. Both are for reading, not for import.
 
 ## Import
 
-Mihomo (Android, TUN mode, `find-process-mode: always`):
+Mihomo (Android, TUN mode, `find-process-mode: always`): paste the entries from
+`mihomo.rules.yaml` under your existing `rules:` key, before `MATCH`. Logical
+`AND` rules work in the main list, not inside a rule-provider.
+
+If you want auto-updating global domains only, add the provider:
 
 ```yaml
 rule-providers:
   blanc:
     type: file
     behavior: classical
-    path: ./blanc/mihomo-provider.yaml
+    path: ./blanc-out/mihomo-provider.yaml
 
 rules:
   - RULE-SET,blanc,REJECT
-  # paste the entries from mihomo.rules.yaml here
   - MATCH,DIRECT
 ```
 
-sing-box:
+App-scoped entries still need to be pasted inline; the provider cannot express
+the nested `AND` rules.
+
+sing-box (1.11+):
 
 ```json
 {
@@ -102,7 +90,7 @@ sing-box:
         "tag": "blanc",
         "type": "local",
         "format": "source",
-        "path": "./blanc/singbox.json"
+        "path": "./blanc-out/singbox.json"
       }
     ],
     "rules": [{ "rule_set": "blanc", "action": "reject" }]
@@ -110,23 +98,39 @@ sing-box:
 }
 ```
 
-AdGuard Home / NextDNS: import `adguard.txt` or `hosts.txt`. This blocks the
-domains for every app, so it is opt-in.
+AdGuard Home / NextDNS: set `compile.globalize: trackers`, then import `adguard.txt` or `hosts.txt`. `global-domains.txt` is the plain-domain form. This blocks the domains for every app.
 
-## Why Go
+## Policy
 
-The proxies are Go, the single binary is Go, and the ADB client speaks the
-server protocol directly instead of spawning a process per command. The TUI is
-[Bubble Tea](https://github.com/charmbracelet/bubbletea); the rest is standard
-library.
+`blanc init` writes a commented `blanc.yaml`. The defaults are conservative:
+
+- functional endpoints (push, login, update, payment, cloud sync) are never blocked automatically;
+- unknown domains are review, not block;
+- only apps with sensitive data or a sensitive category produce tracker blocks;
+- domain overrides are global; app overrides are scoped.
+
+See [docs/policy.md](docs/policy.md) for fields, precedence and examples, or
+[examples/blanc.yaml](examples/blanc.yaml) for a fuller policy.
+`blanc compile --decisions decisions.json` applies per-finding allow/block/review overrides without editing YAML.
+
+## Optional quarantine
+
+BLANC can write `quarantine.sh` and `rollback.sh` for apps with tracker hits. It never executes them, and it does not use root, Private DNS, a VPN or appops by default.
+
+`quarantine.sh` uses `cmd netpolicy` to restrict **metered background** traffic and `am force-stop` to close the current process. It is not a firewall. System apps and shared UIDs are skipped unless the policy opts in. Read the script, then run it yourself; `rollback.sh` reverses the netpolicy changes. The scripts are POSIX `sh`; use Git Bash or WSL on Windows.
 
 ## Notes
 
 - BLANC never phones home.
-- Reports contain package names, UIDs and domains. Review before sharing.
-- `serve --lan` exposes those rules to your local network. Use `--token`.
-- The generated rules are only as good as the NOIR report they came from.
+- NOIR reports contain package names, UIDs and domains. Review before sharing.
+- Rules are static evidence applied to a static report; rescan when apps change.
+- This is a compiler for NOIR, not a replacement for a trusted device.
 - Upstream: [Verlintas/NOIR](https://github.com/Verlintas/NOIR), MIT.
+- Compatibility details: [docs/compatibility.md](docs/compatibility.md).
+
+## Why Go
+
+The proxies are Go, the output is deterministic, and a single static binary is enough. There is deliberately no TUI, daemon or server: the rule file is the interface.
 
 <p align="center">
   <a href="https://trendshift.io"><img src="docs/ai-slop-67.svg" alt="AI-slop Of The Day #67" width="250"></a>
