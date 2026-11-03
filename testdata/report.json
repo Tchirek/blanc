@@ -1,0 +1,139 @@
+{
+  "device": {
+    "serial": "BLANC123",
+    "model": "Pixel 7"
+  },
+  "apps": [
+    {
+      "package": "com.nightmarket.shop",
+      "uid": "10101",
+      "system": false,
+      "debuggable": false,
+      "installer": "com.android.vending",
+      "category": "购物",
+      "vendor": "NightMarket",
+      "sharedUid": null,
+      "dataTypes": ["位置", "设备标识"],
+      "leaks": {
+        "位置": ["alog.umeng.com", "collect.adsight.io"],
+        "设备标识": ["alog.umeng.com", "collect.adsight.io"]
+      },
+      "score": 34,
+      "permissions": [
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.READ_PHONE_STATE"
+      ],
+      "endpoints": [
+        "https://alog.umeng.com/report/v1",
+        "https://collect.adsight.io/beacon",
+        "https://login.nightpass.cn/oauth/token",
+        "https://push.nightpush.cn/device/register",
+        "https://api.nightmarket.cn/v1/cart",
+        "https://metrics.quietreader.jp/v1/stat",
+        "http://203.0.113.7:8080/collect",
+        "https://staging.telemetry.nightsight.io/beacon",
+        "https://schemas.android.com/aapt"
+      ]
+    },
+    {
+      "package": "jp.quietreader.app",
+      "uid": "10102",
+      "system": false,
+      "debuggable": false,
+      "installer": "com.android.vending",
+      "category": "工具",
+      "vendor": null,
+      "sharedUid": null,
+      "dataTypes": [],
+      "leaks": {},
+      "score": 5,
+      "permissions": [],
+      "endpoints": [
+        "https://metrics.quietreader.jp/v1/stat",
+        "https://update.quietreader.jp/manifest.json",
+        "https://api.quietreader.jp/v1/books"
+      ]
+    },
+    {
+      "package": "com.vendorwatch.telemetry",
+      "uid": "1000",
+      "system": true,
+      "debuggable": false,
+      "installer": null,
+      "category": "遥测/统计",
+      "vendor": "VendorWatch",
+      "sharedUid": "android.uid.system",
+      "dataTypes": [],
+      "leaks": {},
+      "score": 60,
+      "permissions": [
+        "android.permission.QUERY_ALL_PACKAGES",
+        "android.permission.PACKAGE_USAGE_STATS"
+      ],
+      "endpoints": [
+        "https://analytics.vendorwatch.cn/report",
+        "https://api.vendorwatch.cn/v1/ping"
+      ]
+    },
+    {
+      "package": "cn.mailroom.app",
+      "uid": "10103",
+      "system": false,
+      "debuggable": false,
+      "installer": "com.android.vending",
+      "category": "社交",
+      "vendor": null,
+      "sharedUid": null,
+      "dataTypes": ["通讯录", "短信"],
+      "leaks": {
+        "通讯录": ["c.umengcloud.com"],
+        "短信": ["c.umengcloud.com"]
+      },
+      "score": 40,
+      "permissions": [
+        "android.permission.READ_CONTACTS",
+        "android.permission.READ_SMS"
+      ],
+      "endpoints": [
+        "https://c.umengcloud.com/collect",
+        "https://oauth.mailroom.cn/token",
+        "https://cdn.mailroom.cn/avatar"
+      ]
+    },
+    {
+      "package": "jp.cleanroom.tool",
+      "uid": "10104",
+      "system": false,
+      "debuggable": false,
+      "installer": "com.android.vending",
+      "category": "工具",
+      "vendor": null,
+      "sharedUid": null,
+      "dataTypes": [],
+      "leaks": {},
+      "score": 3,
+      "permissions": [],
+      "endpoints": [
+        "https://update.cleanroom.jp/app.json",
+        "https://api.cleanroom.jp/v1/status"
+      ]
+    }
+  ],
+  "recommendations": [
+    {
+      "package": "com.vendorwatch.telemetry",
+      "action": "DNS 拦截",
+      "risk": "LOW",
+      "reason": "存在多个上报端点，可在 DNS 层拦截",
+      "autoSafe": false
+    },
+    {
+      "package": "com.nightmarket.shop",
+      "action": "人工复核",
+      "risk": "MED",
+      "reason": "遥测/广告密度高，评估后决定是否保留",
+      "autoSafe": false
+    }
+  ]
+}
