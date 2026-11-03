@@ -55,6 +55,7 @@ func TestCompileDefault(t *testing.T) {
 	want := Stats{
 		Apps:           5,
 		Endpoints:      20,
+		Unclassified:   2,
 		Findings:       16,
 		Blocked:        5,
 		Review:         6,

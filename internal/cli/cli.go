@@ -158,6 +158,7 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 		Version:     version.Version,
 		Commit:      version.Commit,
 		GeneratedAt: time.Now().UTC(),
+		RuleSetPath: singboxRuleSetPath(*outPath),
 	})
 	if err != nil {
 		fmt.Fprintf(stderr, "blanc compile: %v\n", err)
@@ -171,6 +172,9 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 	printSummary(stdout, plan, domains, *policyPath, *reportPath, *outPath)
 	if plan.Stats.Findings == 0 {
 		fmt.Fprintln(stderr, "blanc compile: no endpoints matched the NOIR domain export; check domains-*.txt")
+	}
+	if plan.Stats.Endpoints > 0 && plan.Stats.Unclassified*5 >= plan.Stats.Endpoints {
+		fmt.Fprintf(stderr, "blanc compile: %d of %d endpoints were ignored; inspect manifest ignored reasons\n", plan.Stats.Ignored, plan.Stats.Endpoints)
 	}
 	if plan.Stats.Blocked == 0 {
 		fmt.Fprintln(stderr, "blanc compile: no BLANC rules were emitted; inspect SUMMARY.md and manifest.json")
@@ -245,6 +249,18 @@ func printSummary(w io.Writer, plan *engine.Plan, domains *audit.DomainSet, poli
 	fmt.Fprintf(w, "audit     %s · %s\n",
 		filepath.Join(outPath, render.FileSummary), filepath.Join(outPath, render.FileManifest))
 	fmt.Fprintln(w, "safety    a blocked URL is not privacy; NOIR cannot see vendor services, frameworks or system processes.")
+}
+
+func singboxRuleSetPath(outPath string) string {
+	cleaned := filepath.Clean(outPath)
+	if cleaned == "." {
+		return "./" + render.FileSingbox
+	}
+	joined := filepath.ToSlash(filepath.Join(cleaned, render.FileSingbox))
+	if filepath.IsAbs(cleaned) {
+		return joined
+	}
+	return "./" + joined
 }
 
 func writeFiles(outPath string, files map[string][]byte) error {

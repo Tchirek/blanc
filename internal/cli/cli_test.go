@@ -85,6 +85,38 @@ func TestInitAndCompile(t *testing.T) {
 	if manifest.Stats.Apps != 5 || manifest.Stats.Endpoints != 20 || manifest.Stats.Blocked != 5 {
 		t.Fatalf("stats = %+v", manifest.Stats)
 	}
+	var route struct {
+		Route struct {
+			RuleSet []struct {
+				Path string `json:"path"`
+			} `json:"rule_set"`
+		} `json:"route"`
+	}
+	routeRaw, err := os.ReadFile(filepath.Join(outPath, render.FileSingboxRoute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(routeRaw, &route); err != nil {
+		t.Fatal(err)
+	}
+	wantPath := filepath.ToSlash(filepath.Join(outPath, render.FileSingbox))
+	if route.Route.RuleSet[0].Path != wantPath {
+		t.Fatalf("route path = %q, want %q", route.Route.RuleSet[0].Path, wantPath)
+	}
+}
+
+func TestSingboxRuleSetPath(t *testing.T) {
+	if got := singboxRuleSetPath("blanc-out"); got != "./blanc-out/singbox.json" {
+		t.Fatalf("relative path = %q", got)
+	}
+	if got := singboxRuleSetPath("."); got != "./singbox.json" {
+		t.Fatalf("dot path = %q", got)
+	}
+	abs := filepath.Join(t.TempDir(), "out")
+	want := filepath.ToSlash(filepath.Join(abs, render.FileSingbox))
+	if got := singboxRuleSetPath(abs); got != want {
+		t.Fatalf("absolute path = %q, want %q", got, want)
+	}
 }
 
 func TestCompileMissingDomains(t *testing.T) {
@@ -198,7 +230,7 @@ func TestInitExistingAndErrors(t *testing.T) {
 
 func TestVersion(t *testing.T) {
 	code, stdout, _ := run("version")
-	if code != 0 || !strings.Contains(stdout, "BLANC 0.2.0") {
+	if code != 0 || !strings.Contains(stdout, "BLANC dev") {
 		t.Fatalf("code=%d stdout=%q", code, stdout)
 	}
 }

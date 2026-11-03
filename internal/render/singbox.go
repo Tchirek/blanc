@@ -81,7 +81,7 @@ func suffixDomains(domains []string) []string {
 	return out
 }
 
-func singboxRoute() routeFragment {
+func singboxRoute(path string) routeFragment {
 	return routeFragment{
 		Route: route{
 			RuleSet: []ruleSetRef{
@@ -89,7 +89,7 @@ func singboxRoute() routeFragment {
 					Tag:    "blanc",
 					Type:   "local",
 					Format: "source",
-					Path:   "./blanc-out/singbox.json",
+					Path:   path,
 				},
 			},
 			Rules: []routeRule{

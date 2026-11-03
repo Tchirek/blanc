@@ -143,7 +143,7 @@ func TestAllDefault(t *testing.T) {
 	}
 
 	summary := string(files[FileSummary])
-	for _, want := range []string{"## Blocked", "## Review", "## Make it take effect", "GEOSITE,cn", "blanc doctor", "trusted device"} {
+	for _, want := range []string{"## Blocked", "## Review", "## Make it take effect", "GEOSITE,cn", "blanc doctor", "trusted device", "Ignored: 3 (15%)", "not in NOIR domain export ×2"} {
 		if !strings.Contains(summary, want) {
 			t.Fatalf("summary missing %q:\n%s", want, summary)
 		}
@@ -195,6 +195,29 @@ func TestEmptyPlanWarnings(t *testing.T) {
 	}
 	if !strings.Contains(string(files[FileSummary]), "No rules were emitted") {
 		t.Fatalf("summary:\n%s", files[FileSummary])
+	}
+}
+
+func TestIgnoredWarning(t *testing.T) {
+	plan := testPlan(t, nil)
+	plan.Stats.Endpoints = 10
+	if !strings.Contains(strings.Join(warnings(plan), " "), "not in the NOIR domain export") {
+		t.Fatalf("warnings = %v", warnings(plan))
+	}
+}
+
+func TestRoutePathOption(t *testing.T) {
+	plan := testPlan(t, nil)
+	files, err := All(plan, Options{Version: "test", Commit: "abc", GeneratedAt: fixedTime, RuleSetPath: "./custom/singbox.json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fragment routeFragment
+	if err := json.Unmarshal(files[FileSingboxRoute], &fragment); err != nil {
+		t.Fatal(err)
+	}
+	if fragment.Route.RuleSet[0].Path != "./custom/singbox.json" {
+		t.Fatalf("path = %q", fragment.Route.RuleSet[0].Path)
 	}
 }
 

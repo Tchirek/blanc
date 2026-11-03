@@ -26,6 +26,7 @@ type Options struct {
 	Version     string
 	Commit      string
 	GeneratedAt time.Time
+	RuleSetPath string
 }
 
 type manifest struct {
@@ -69,7 +70,7 @@ func All(plan *engine.Plan, opts Options) (map[string][]byte, error) {
 
 	files[FileMihomo] = mihomoRules(plan)
 	files[FileSingbox] = marshalJSON(sourceRuleSetFor(plan))
-	files[FileSingboxRoute] = marshalJSON(singboxRoute())
+	files[FileSingboxRoute] = marshalJSON(singboxRoute(opts.RuleSetPath))
 	files[FileSummary] = summary(plan, opts)
 
 	fileHashes := make(map[string]string, len(files))
@@ -116,6 +117,9 @@ func withDefaults(opts Options) Options {
 	if opts.GeneratedAt.IsZero() {
 		opts.GeneratedAt = time.Now().UTC()
 	}
+	if opts.RuleSetPath == "" {
+		opts.RuleSetPath = "./blanc-out/singbox.json"
+	}
 	return opts
 }
 
@@ -147,6 +151,9 @@ func warnings(plan *engine.Plan) []string {
 	if plan.Stats.Blocked == 0 {
 		out = append(out, "No BLANC rules were emitted; this may be a clean device or a classification mismatch.")
 	}
+	if plan.Stats.Endpoints > 0 && plan.Stats.Unclassified*5 >= plan.Stats.Endpoints {
+		out = append(out, fmt.Sprintf("%d of %d endpoints were not in the NOIR domain export; check host normalization and the domain files.", plan.Stats.Unclassified, plan.Stats.Endpoints))
+	}
 	return out
 }
 
@@ -158,6 +165,13 @@ func summary(plan *engine.Plan, opts Options) []byte {
 		plan.Stats.Apps, plan.Stats.Endpoints, plan.Stats.Findings,
 		plan.Stats.Blocked, plan.Stats.Review, plan.Stats.Allowed, plan.Stats.Ignored)
 
+	if plan.Stats.Ignored > 0 {
+		percent := 0
+		if plan.Stats.Endpoints > 0 {
+			percent = plan.Stats.Ignored * 100 / plan.Stats.Endpoints
+		}
+		fmt.Fprintf(&b, "Ignored: %d (%d%%) — %s\n\n", plan.Stats.Ignored, percent, ignoredBreakdown(plan))
+	}
 	if plan.Stats.Findings == 0 {
 		fmt.Fprintf(&b, "No endpoints matched the NOIR domain export.\n\n")
 	}
@@ -198,6 +212,35 @@ func summary(plan *engine.Plan, opts Options) []byte {
 	fmt.Fprintf(&b, "## Files\n\n")
 	fmt.Fprintf(&b, "`mihomo.rules.yaml` · `singbox.json` · `singbox-route.json` · `SUMMARY.md` · `manifest.json`\n")
 	return []byte(b.String())
+}
+
+func ignoredBreakdown(plan *engine.Plan) string {
+	counts := make(map[string]int)
+	for _, ignored := range plan.Ignored {
+		counts[ignored.Reason]++
+	}
+	type item struct {
+		reason string
+		count  int
+	}
+	items := make([]item, 0, len(counts))
+	for reason, count := range counts {
+		items = append(items, item{reason: reason, count: count})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].count != items[j].count {
+			return items[i].count > items[j].count
+		}
+		return items[i].reason < items[j].reason
+	})
+	if len(items) > 3 {
+		items = items[:3]
+	}
+	parts := make([]string, 0, len(items))
+	for _, item := range items {
+		parts = append(parts, fmt.Sprintf("%s ×%d", item.reason, item.count))
+	}
+	return strings.Join(parts, " · ")
 }
 
 func dataCell(dataTypes []string) string {

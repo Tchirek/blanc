@@ -40,6 +40,7 @@ type Ignored struct {
 type Stats struct {
 	Apps           int `json:"apps"`
 	Endpoints      int `json:"endpoints"`
+	Unclassified   int `json:"unclassified"`
 	Findings       int `json:"findings"`
 	Blocked        int `json:"blocked"`
 	Review         int `json:"review"`
@@ -124,7 +125,7 @@ func Compile(report *audit.Report, domains *audit.DomainSet, pol *policy.Policy)
 						ignored = append(ignored, Ignored{
 							Package: app.Package,
 							Raw:     raw,
-							Reason:  "not in NOIR domain export",
+							Reason:  reasonNotInExport,
 						})
 					}
 					continue
@@ -264,12 +265,19 @@ func recompute(plan *Plan) {
 			stats.Allowed++
 		}
 	}
+	for _, ignored := range plan.Ignored {
+		if ignored.Reason == reasonNotInExport {
+			stats.Unclassified++
+		}
+	}
 	stats.UniqueDomains = len(uniqueDomains)
 	stats.BlockedDomains = len(blockedDomains)
 	stats.AppsWithBlocks = len(appsWithBlocks)
 	stats.Ignored = len(plan.Ignored)
 	plan.Stats = stats
 }
+
+const reasonNotInExport = "not in NOIR domain export"
 
 func findingID(pkg, domain string) string {
 	return pkg + "|" + domain
