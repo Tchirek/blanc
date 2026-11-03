@@ -18,12 +18,11 @@ func TestParseEndpoint(t *testing.T) {
 		{"https://ALOG.UMENG.COM:443/report/v1", "alog.umeng.com", "/report/v1", nil},
 		{"alog.umeng.com/report", "alog.umeng.com", "/report", nil},
 		{"//cdn.nightmarket.cn/a.js", "cdn.nightmarket.cn", "/a.js", nil},
+		{"https://staging.telemetry.nightsight.io/beacon", "staging.telemetry.nightsight.io", "/beacon", nil},
+		{"https://schemas.android.com/aapt", "schemas.android.com", "/aapt", nil},
 		{"https://203.0.113.7:8080/collect", "", "", ErrIPLiteral},
 		{"https://127.0.0.1/collect", "", "", ErrIPLiteral},
-		{"https://localhost/collect", "", "", ErrLocalHost},
-		{"https://staging.telemetry.nightsight.io/beacon", "", "", ErrTestHost},
-		{"https://schemas.android.com/aapt", "", "", ErrDocsHost},
-		{"https://example.com/report", "", "", ErrDocsHost},
+		{"https://localhost/collect", "", "", ErrInvalidHost},
 		{"not a url", "", "", ErrInvalidHost},
 		{"https://", "", "", ErrInvalidHost},
 		{"ftp://files.nightmarket.cn/x", "", "", ErrInvalidHost},
@@ -54,7 +53,7 @@ func TestParseEndpointTrimsNoise(t *testing.T) {
 
 func TestValidDomain(t *testing.T) {
 	valid := []string{"a.b", "alog.umeng.com", "xn--fiqs8s.cn", "my_service.example.cn"}
-	invalid := []string{"", "a", "a..b", "*.example.com", "a b.com", "a:80", "http://a.b"}
+	invalid := []string{"", "a", "a..b", "*.example.com", "a b.com", "a:80", "http://a.b", "localhost"}
 	for _, host := range valid {
 		if !ValidDomain(host) {
 			t.Fatalf("valid domain rejected: %q", host)
@@ -64,5 +63,8 @@ func TestValidDomain(t *testing.T) {
 		if ValidDomain(host) {
 			t.Fatalf("invalid domain accepted: %q", host)
 		}
+	}
+	if got, err := NormalizeDomain(" ALOG.UMENG.COM. "); err != nil || got != "alog.umeng.com" {
+		t.Fatalf("normalize = %q %v", got, err)
 	}
 }

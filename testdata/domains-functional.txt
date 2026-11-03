@@ -1,0 +1,5 @@
+login.nightpass.cn
+push.nightpush.cn
+update.quietreader.jp
+oauth.mailroom.cn
+update.cleanroom.jp

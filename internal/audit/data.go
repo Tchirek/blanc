@@ -1,8 +1,6 @@
 package audit
 
-import (
-	"strings"
-)
+import "strings"
 
 // 秘め事を
 // 人は言葉に
@@ -48,31 +46,6 @@ var categoryAliases = map[string]string{
 	"其他": "other", "other": "other",
 }
 
-var permissionData = map[string][]string{
-	"ACCESS_FINE_LOCATION":                {"location"},
-	"ACCESS_COARSE_LOCATION":              {"location"},
-	"ACCESS_BACKGROUND_LOCATION":          {"location"},
-	"READ_CONTACTS":                       {"contacts"},
-	"READ_SMS":                            {"sms"},
-	"RECEIVE_SMS":                         {"sms"},
-	"READ_CALL_LOG":                       {"calls"},
-	"READ_PHONE_STATE":                    {"identity"},
-	"READ_PRIVILEGED_PHONE_STATE":         {"identity"},
-	"RECORD_AUDIO":                        {"mic"},
-	"CAPTURE_AUDIO_OUTPUT":                {"mic"},
-	"CAPTURE_VOICE_COMMUNICATION_OUTPUT":  {"mic"},
-	"CAMERA":                              {"camera"},
-	"FOREGROUND_SERVICE_MEDIA_PROJECTION": {"screen"},
-	"QUERY_ALL_PACKAGES":                  {"apps"},
-	"PACKAGE_USAGE_STATS":                 {"apps"},
-	"MANAGE_EXTERNAL_STORAGE":             {"files"},
-	"READ_MEDIA_IMAGES":                   {"files"},
-	"READ_MEDIA_VIDEO":                    {"files"},
-	"READ_EXTERNAL_STORAGE":               {"files"},
-	"READ_CALENDAR":                       {"calendar"},
-	"GET_ACCOUNTS":                        {"accounts"},
-}
-
 func NormalizeDataType(value string) (string, bool) {
 	slug, ok := dataTypeAliases[strings.ToLower(strings.TrimSpace(value))]
 	return slug, ok
@@ -90,21 +63,7 @@ func DataTypesFromLabels(labels []string) []string {
 			set[slug] = struct{}{}
 		}
 	}
-	return orderedDataTypes(set)
-}
-
-func DataTypesFromPermissions(perms []string) []string {
-	set := make(map[string]struct{})
-	for _, perm := range perms {
-		name := perm
-		if i := strings.LastIndexByte(name, '.'); i >= 0 {
-			name = name[i+1:]
-		}
-		for _, slug := range permissionData[name] {
-			set[slug] = struct{}{}
-		}
-	}
-	return orderedDataTypes(set)
+	return OrderedDataTypes(set)
 }
 
 func KnownDataTypes() []string {
@@ -112,10 +71,6 @@ func KnownDataTypes() []string {
 }
 
 func OrderedDataTypes(set map[string]struct{}) []string {
-	return orderedDataTypes(set)
-}
-
-func orderedDataTypes(set map[string]struct{}) []string {
 	out := make([]string, 0, len(set))
 	for _, slug := range dataTypeOrder {
 		if _, ok := set[slug]; ok {

@@ -11,9 +11,6 @@ import (
 var (
 	ErrInvalidHost = errors.New("invalid host")
 	ErrIPLiteral   = errors.New("ip literal")
-	ErrLocalHost   = errors.New("local host")
-	ErrTestHost    = errors.New("test or staging host")
-	ErrDocsHost    = errors.New("documentation or infrastructure host")
 )
 
 type Endpoint struct {
@@ -23,34 +20,6 @@ type Endpoint struct {
 }
 
 var labelPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9_-]{0,61}[a-z0-9])?$`)
-
-var ignoredHosts = map[string]struct{}{
-	"schemas.android.com":     {},
-	"w3.org":                  {},
-	"www.w3.org":              {},
-	"xmlpull.org":             {},
-	"jakarta.apache.org":      {},
-	"apache.org":              {},
-	"ns.adobe.com":            {},
-	"xml.apache.org":          {},
-	"java.sun.com":            {},
-	"www.bea.com":             {},
-	"github.com":              {},
-	"githubusercontent.com":   {},
-	"codeberg.org":            {},
-	"schemas.microsoft.com":   {},
-	"developer.android.com":   {},
-	"issuetracker.google.com": {},
-	"youtrack.jetbrains.com":  {},
-	"example.com":             {},
-	"example.net":             {},
-	"example.org":             {},
-}
-
-var testLabels = map[string]struct{}{
-	"test": {}, "testing": {}, "staging": {}, "stg": {}, "dev": {},
-	"daily": {}, "preview": {}, "sandbox": {},
-}
 
 var trimCut = " \t\r\n\"'`<>()[]{},;"
 
@@ -95,19 +64,8 @@ func ParseEndpoint(raw string) (Endpoint, error) {
 	if net.ParseIP(host) != nil {
 		return Endpoint{}, ErrIPLiteral
 	}
-	if host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".local") {
-		return Endpoint{}, ErrLocalHost
-	}
-	if _, ok := ignoredHosts[host]; ok {
-		return Endpoint{}, ErrDocsHost
-	}
 	if !ValidDomain(host) {
 		return Endpoint{}, ErrInvalidHost
-	}
-	for _, label := range strings.Split(host, ".") {
-		if _, ok := testLabels[label]; ok {
-			return Endpoint{}, ErrTestHost
-		}
 	}
 
 	path := parsed.EscapedPath()

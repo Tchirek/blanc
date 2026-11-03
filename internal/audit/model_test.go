@@ -22,15 +22,15 @@ func TestLoadFixture(t *testing.T) {
 	if len(report.Hash) != 64 {
 		t.Fatalf("hash = %q", report.Hash)
 	}
+	if strings.Join(report.Keys, ",") != "apps,device,recommendations" {
+		t.Fatalf("keys = %v", report.Keys)
+	}
 	shop := report.Apps[0]
 	if got, want := shop.CategorySlug(), "shopping"; got != want {
 		t.Fatalf("category = %q, want %q", got, want)
 	}
 	if got, want := strings.Join(shop.DataTypeSlugs(), ","), "location,identity"; got != want {
 		t.Fatalf("data types = %q, want %q", got, want)
-	}
-	if got, want := len(shop.EndpointHosts()), 6; got != want {
-		t.Fatalf("endpoint hosts = %d, want %d", got, want)
 	}
 }
 
@@ -39,24 +39,12 @@ func TestParseRejectsDuplicateAndBadPackages(t *testing.T) {
 		`{"apps":[{"package":"com.a.b"},{"package":"com.a.b"}]}`,
 		`{"apps":[{"package":"com..b"}]}`,
 		`{"apps":[{"package":"nodot"}]}`,
-		`{"apps":[{"package":"com.a.b","score":-1}]}`,
+		`[]`,
 	}
 	for _, raw := range cases {
 		if _, err := Parse([]byte(raw)); err == nil {
 			t.Fatalf("expected error for %s", raw)
 		}
-	}
-}
-
-func TestPermissionsFallback(t *testing.T) {
-	app := App{Permissions: []string{
-		"android.permission.READ_CONTACTS",
-		"android.permission.RECORD_AUDIO",
-		"android.permission.ACCESS_FINE_LOCATION",
-	}}
-	got := strings.Join(app.DataTypeSlugs(), ",")
-	if want := "location,contacts,mic"; got != want {
-		t.Fatalf("data types = %q, want %q", got, want)
 	}
 }
 
@@ -72,5 +60,9 @@ func TestNormalization(t *testing.T) {
 	}
 	if got := len(KnownDataTypes()); got != 12 {
 		t.Fatalf("known data types = %d", got)
+	}
+	app := App{DataTypes: []string{"位置", "未知"}}
+	if got := strings.Join(app.DataTypeSlugs(), ","); got != "location" {
+		t.Fatalf("data types = %q", got)
 	}
 }
