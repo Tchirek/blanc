@@ -18,6 +18,9 @@ BLANC is a small companion to [NOIR](https://github.com/Verlintas/NOIR). It does
 - **Use NOIR directly if** you only want a flat DNS blocklist; `domains-trackers.txt` already is one.
 - **Do not use BLANC** to change device settings; that is NOIR's plan/rollback territory.
 
+One concrete difference: the same `metrics.quietreader.jp` can be rejected for a
+shopping app and left alone for a reader. A flat list cannot express that.
+
 > [!WARNING]
 > A blocked URL is not privacy. NOIR only sees what is visible in APKs; it
 > cannot see vendor-preinstalled services, lower-level frameworks, baseband or
@@ -54,7 +57,7 @@ files are missing, it stops and says so. There is no second classifier.
 | `mihomo.rules.yaml` | paste under `rules:`, before broad rules |
 | `singbox.json` | app-scoped source rule-set, version 3 |
 | `singbox-route.json` | route fragment that rejects the rule-set |
-| `SUMMARY.md` | decisions and the “make it take effect” checklist |
+| `SUMMARY.md` | verdicts and the “make it take effect” checklist |
 | `manifest.json` | full evidence, input hashes, warnings |
 
 No DNS lists, no quarantine scripts, no decisions file. NOIR already exports
