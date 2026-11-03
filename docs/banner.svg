@@ -33,8 +33,8 @@
 
     <rect x="742" y="44" width="1" height="212" fill="#242424"/>
     <text x="792" y="94" fill="#e8e8e8" font-size="25" letter-spacing="8">白き紙</text>
-    <text x="792" y="142" fill="#e8e8e8" font-size="25" letter-spacing="8">闇の通信を</text>
-    <text x="792" y="190" fill="#e8e8e8" font-size="25" letter-spacing="8">断ち切る</text>
+    <text x="792" y="142" fill="#e8e8e8" font-size="25" letter-spacing="8">通信の闇を</text>
+    <text x="792" y="190" fill="#e8e8e8" font-size="25" letter-spacing="8">断ち切ろう</text>
     <text x="792" y="236" fill="#6d6d6d" font-size="12" letter-spacing="3">HAIKU FOR A QUIETER DEVICE</text>
 
     <rect x="1004" y="244" width="132" height="26" fill="#f2f2f2"/>

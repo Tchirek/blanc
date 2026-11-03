@@ -10,7 +10,7 @@ import (
 
 func adguard(plan *engine.Plan) []byte {
 	var b strings.Builder
-	b.WriteString("! 白き紙\n! 闇の通信を\n! 断ち切る\n")
+	b.WriteString("! 白き紙\n! 通信の闇を\n! 断ち切ろう\n")
 	for _, domain := range globalBlockedDomains(plan) {
 		fmt.Fprintf(&b, "||%s^\n", domain)
 	}
@@ -19,7 +19,7 @@ func adguard(plan *engine.Plan) []byte {
 
 func hosts(plan *engine.Plan) []byte {
 	var b strings.Builder
-	b.WriteString("# 白き紙\n# 闇の通信を\n# 断ち切る\n")
+	b.WriteString("# 白き紙\n# 通信の闇を\n# 断ち切ろう\n")
 	for _, domain := range globalBlockedDomains(plan) {
 		fmt.Fprintf(&b, "0.0.0.0 %s\n", domain)
 	}

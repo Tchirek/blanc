@@ -47,7 +47,7 @@ func renderPlan(t *testing.T, plan *engine.Plan) map[string][]byte {
 }
 
 // 墨を置き
-// 紙の上の
+// 紙の上にて
 // 影を読む
 func TestAllDefault(t *testing.T) {
 	plan := testPlan(t, nil, nil)
