@@ -7,3 +7,5 @@
 *.prof
 .DS_Store
 Thumbs.db
+/blanc-out/
+/noir-out/
