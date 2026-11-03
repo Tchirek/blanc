@@ -12,6 +12,12 @@
   <img alt="status" src="https://img.shields.io/badge/status-unreleased-111111">
 </p>
 
+<p align="center">
+  <img src="docs/ai-slop-67.svg" alt="AI-slop Of The Day #67" width="250" height="55">
+  &nbsp;
+  <img src="docs/trendshit-69.svg" alt="TRENDSHIT #69 Repository Of The Day" width="250" height="55">
+</p>
+
 BLANC is a small companion to [NOIR](https://github.com/Verlintas/NOIR). It does one job: turn NOIR's domain export into **per-app** Mihomo and sing-box reject rules. It does not scan, run as a daemon, or touch the device.
 
 - **Use BLANC if** you need to block a tracker for one app while keeping it for another.
@@ -144,9 +150,5 @@ The proxies are Go and a single static binary is enough. The rule files are
 deterministic; the manifest records a timestamp and input hashes. There is
 deliberately no TUI, daemon or server: the rule file and the doctor are the
 interface.
-
-<p align="center">
-  <a href="https://trendshift.io"><img src="docs/ai-slop-67.svg" alt="AI-slop Of The Day #67" width="250"></a>
-</p>
 
 <p align="center"><sub>MIT · made for people who prefer a quiet phone</sub></p>
