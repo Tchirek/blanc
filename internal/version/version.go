@@ -14,5 +14,9 @@ func String() string {
 }
 
 func Full() string {
-	return "BLANC " + String() + " built " + Date
+	out := "BLANC " + String()
+	if Date != "" && Date != "unknown" {
+		out += " built " + Date
+	}
+	return out
 }
