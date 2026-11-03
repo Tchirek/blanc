@@ -1,20 +1,44 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 53" width="250" height="55" role="img" aria-label="TRENDSHIT: number 69 repository of the day">
   <rect x="0.5" y="0.5" width="249" height="52" rx="10" fill="#FFFFFF" stroke="#4a0e99" stroke-width="1"/>
   <defs>
-    <linearGradient id="medal-69" x1="0" y1="0" x2="0" y2="1">
+    <linearGradient id="ribbon-69" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#8C93DC"/>
-      <stop offset="0.55" stop-color="#4a0e99"/>
-      <stop offset="1" stop-color="#271A54"/>
+      <stop offset="1" stop-color="#4a0e99"/>
     </linearGradient>
+    <linearGradient id="rim-69" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F3F1FC"/>
+      <stop offset="0.55" stop-color="#B9B4E8"/>
+      <stop offset="1" stop-color="#8F86C8"/>
+    </linearGradient>
+    <linearGradient id="medal-69" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#A9A1E8"/>
+      <stop offset="0.5" stop-color="#5A4FB0"/>
+      <stop offset="1" stop-color="#2B1B63"/>
+    </linearGradient>
+    <radialGradient id="shine-69" cx="0.35" cy="0.2" r="0.7">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.55"/>
+      <stop offset="0.6" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
   </defs>
-  <path d="M25 8 L22 3 M35 8 L38 3" fill="none" stroke="#4a0e99" stroke-width="1.1" stroke-linecap="round"/>
-  <rect x="18" y="7" width="24" height="16" rx="2" fill="#111111" stroke="#4a0e99" stroke-width="1"/>
-  <rect x="21" y="10" width="18" height="10" rx="1" fill="#2A1A5E"/>
-  <rect x="23.5" y="13.5" width="13" height="2" fill="#ff3b30" opacity="0.9"/>
-  <circle cx="30" cy="31" r="11" fill="url(#medal-69)" stroke="#271A54" stroke-width="1"/>
-  <circle cx="30" cy="31" r="8.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.35" stroke-width="0.7"/>
-  <ellipse cx="27" cy="26" rx="4" ry="2" fill="#FFFFFF" opacity="0.18"/>
-  <text x="30" y="35.5" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="800" fill="#FFFFFF">69</text>
+  <ellipse cx="30" cy="46" rx="10" ry="1.8" fill="#271A54" opacity="0.18"/>
+  <path d="M24 4 L17 26 L23 24 L27 8 Z" fill="url(#ribbon-69)" stroke="#271A54" stroke-width="0.8" stroke-linejoin="round"/>
+  <path d="M36 4 L43 26 L37 24 L33 8 Z" fill="url(#ribbon-69)" stroke="#271A54" stroke-width="0.8" stroke-linejoin="round"/>
+  <path d="M25 5 L21 23 L23 22 L26 8 Z" fill="#C9C4F2" opacity="0.45"/>
+  <path d="M35 5 L39 23 L37 22 L34 8 Z" fill="#C9C4F2" opacity="0.45"/>
+  <rect x="23" y="1" width="14" height="10" rx="2" fill="#111111" stroke="#4a0e99" stroke-width="0.9"/>
+  <rect x="25" y="3" width="10" height="6" rx="1" fill="#2A1A5E"/>
+  <circle cx="27.8" cy="6" r="1.1" fill="#FFFFFF"/>
+  <circle cx="32.2" cy="6" r="1.1" fill="#FFFFFF"/>
+  <circle cx="27.8" cy="6.1" r="0.45" fill="#271A54"/>
+  <circle cx="32.2" cy="6.1" r="0.45" fill="#271A54"/>
+  <rect x="26.5" y="8" width="7" height="1" fill="#ff3b30" opacity="0.85"/>
+  <circle cx="30" cy="33" r="12" fill="url(#rim-69)" stroke="#271A54" stroke-width="1"/>
+  <circle cx="30" cy="33" r="10.5" fill="url(#medal-69)" stroke="#4a0e99" stroke-width="0.8"/>
+  <circle cx="30" cy="33" r="10.5" fill="url(#shine-69)"/>
+  <circle cx="30" cy="33" r="8.8" fill="none" stroke="#EDF1F6" stroke-opacity="0.35" stroke-width="0.6"/>
+  <ellipse cx="27.5" cy="28.5" rx="5" ry="2.6" fill="#EDF1F6" opacity="0.35"/>
+  <text x="30" y="37.4" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="800" fill="#271A54" opacity="0.55">69</text>
+  <text x="30" y="36.8" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="800" fill="#FFFFFF">69</text>
   <text x="64" y="19" font-family="Arial, Helvetica, sans-serif" font-size="8" font-weight="700" letter-spacing="1" fill="#6670cc">TRENDSHIT</text>
-  <text x="50" y="37" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" fill="#432787"><tspan fill="#d92d20">#69</tspan> Repository Of The Day</text>
+  <text x="52" y="37" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" fill="#432787"><tspan fill="#d92d20">#69</tspan> Repository Of The Day</text>
 </svg>
