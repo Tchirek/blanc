@@ -1,17 +1,9 @@
 version: 1
 
-# 電波絶ち
-# 越えてはならぬ
-# 線を引く
-compile:
-  globalize: none
-  include_system: true
-
-# 砂の名を
-# 人の言葉に
-# 置き換える
+# 見えぬ目を
+# アプリの窓に
+# 灯すなり
 sensitive:
-  require: true
   data_types:
     - location
     - contacts
@@ -31,25 +23,10 @@ sensitive:
     - location
     - security
     - system
-  min_score: 0
 
-# 影を消す
-# アプリの窓に
+include_system: true
+
+# 名を呼べば
+# 白き窓辺に
 # 鍵をかけ
 apps: {}
-
-# 門を閉じ
-# 内なる声を
-# 守る朝
-domains: {}
-
-# 夜の網
-# 眠る端末に
-# 静けさを
-quarantine:
-  min_blocked_domains: 1
-  include_system: false
-  include_shared_uid: false
-  background_restrict: true
-  appops_background: false
-  force_stop: true
