@@ -27,7 +27,8 @@ BLANC is a small companion to [NOIR](https://github.com/Verlintas/NOIR). NOIR fi
 go build -trimpath -o blanc ./cmd/blanc
 ```
 
-Go 1.24+. No CGO, no runtime. The only direct dependency is `gopkg.in/yaml.v3`.
+On Windows, use `-o blanc.exe`. Go 1.24+. No CGO, no runtime. The only direct
+dependency is `gopkg.in/yaml.v3`.
 
 ## Quick start
 
