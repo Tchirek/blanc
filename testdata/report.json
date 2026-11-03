@@ -67,10 +67,7 @@
       "dataTypes": [],
       "leaks": {},
       "score": 60,
-      "permissions": [
-        "android.permission.QUERY_ALL_PACKAGES",
-        "android.permission.PACKAGE_USAGE_STATS"
-      ],
+      "permissions": [],
       "endpoints": [
         "https://analytics.vendorwatch.cn/report",
         "https://api.vendorwatch.cn/v1/ping"
