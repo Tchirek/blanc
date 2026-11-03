@@ -35,8 +35,11 @@ AND,((PROCESS-NAME,com.example.app),(DOMAIN-SUFFIX,tracker.example)),REJECT
 ## sing-box
 
 `singbox.json` is a source rule-set, version 3, requiring sing-box 1.11+.
-Each app rule matches `package_name` **and** `domain_suffix`; separate fields in
-a sing-box rule are conjunctive. `singbox-route.json` rejects the rule-set with
+Each host is emitted twice: `domain` for the exact host and `.host` in
+`domain_suffix` for subdomains, so the bare host matches across sing-box
+versions. Each app rule matches `package_name` **and** the domain group;
+separate fields in a sing-box rule are conjunctive, while domain fields inside
+the group are OR. `singbox-route.json` rejects the rule-set with
 `action: reject`.
 
 The `path` in the route fragment is `./blanc-out/singbox.json`, relative to the

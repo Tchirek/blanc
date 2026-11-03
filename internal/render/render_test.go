@@ -77,8 +77,11 @@ func TestAllDefault(t *testing.T) {
 	if set.Rules[0].PackageName[0] != "cn.mailroom.app" || set.Rules[1].PackageName[0] != "com.nightmarket.shop" {
 		t.Fatalf("singbox order = %+v", set.Rules)
 	}
-	if got := strings.Join(set.Rules[1].DomainSuffix, ","); got != "alog.umeng.com,collect.adsight.io,metrics.quietreader.jp" {
+	if got := strings.Join(set.Rules[1].Domain, ","); got != "alog.umeng.com,collect.adsight.io,metrics.quietreader.jp" {
 		t.Fatalf("shop domains = %q", got)
+	}
+	if got := strings.Join(set.Rules[1].DomainSuffix, ","); got != ".alog.umeng.com,.collect.adsight.io,.metrics.quietreader.jp" {
+		t.Fatalf("shop suffixes = %q", got)
 	}
 
 	var rules []string
@@ -201,7 +204,7 @@ func TestAllGlobalized(t *testing.T) {
 	if err := json.Unmarshal(files[FileSingbox], &set); err != nil {
 		t.Fatal(err)
 	}
-	if len(set.Rules) != 1 || len(set.Rules[0].PackageName) != 0 || len(set.Rules[0].DomainSuffix) != 5 {
+	if len(set.Rules) != 1 || len(set.Rules[0].PackageName) != 0 || len(set.Rules[0].Domain) != 5 || len(set.Rules[0].DomainSuffix) != 5 {
 		t.Fatalf("singbox = %+v", set)
 	}
 
@@ -317,7 +320,7 @@ func TestDecisionsFlow(t *testing.T) {
 		t.Fatalf("rules = %+v", set.Rules)
 	}
 	shop := set.Rules[1]
-	if got := strings.Join(shop.DomainSuffix, ","); got != "collect.adsight.io,metrics.quietreader.jp" {
+	if got := strings.Join(shop.Domain, ","); got != "collect.adsight.io,metrics.quietreader.jp" {
 		t.Fatalf("shop domains = %q", got)
 	}
 	if set.Rules[0].PackageName[0] != "cn.mailroom.app" || set.Rules[3].PackageName[0] != "jp.quietreader.app" {

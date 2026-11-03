@@ -13,6 +13,7 @@ type sourceRuleSet struct {
 
 type sourceRule struct {
 	PackageName  []string `json:"package_name,omitempty"`
+	Domain       []string `json:"domain,omitempty"`
 	DomainSuffix []string `json:"domain_suffix,omitempty"`
 }
 
@@ -62,7 +63,10 @@ func sourceRuleSetFor(plan *engine.Plan) sourceRuleSet {
 
 	rules := make([]sourceRule, 0, len(scoped)+1)
 	if len(globals) > 0 {
-		rules = append(rules, sourceRule{DomainSuffix: globals})
+		rules = append(rules, sourceRule{
+			Domain:       globals,
+			DomainSuffix: suffixDomains(globals),
+		})
 	}
 
 	packages := make([]string, 0, len(scoped))
@@ -77,10 +81,19 @@ func sourceRuleSetFor(plan *engine.Plan) sourceRuleSet {
 		}
 		rules = append(rules, sourceRule{
 			PackageName:  []string{pkg},
-			DomainSuffix: domains,
+			Domain:       domains,
+			DomainSuffix: suffixDomains(domains),
 		})
 	}
 	return sourceRuleSet{Version: 3, Rules: rules}
+}
+
+func suffixDomains(domains []string) []string {
+	out := make([]string, len(domains))
+	for i, domain := range domains {
+		out[i] = "." + domain
+	}
+	return out
 }
 
 func singboxRoute() routeFragment {
