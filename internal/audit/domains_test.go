@@ -63,6 +63,21 @@ func TestLoadDomainsErrors(t *testing.T) {
 	}
 }
 
+func TestLoadDomainsSkipsIPs(t *testing.T) {
+	dir := t.TempDir()
+	writeDomainFiles(t, dir, "100.69.165.28\ntracker.example.cn\n", "", "api.example.cn")
+	set, err := LoadDomains(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if set.SkippedIPs != 1 {
+		t.Fatalf("skipped = %d", set.SkippedIPs)
+	}
+	if _, ok := set.Class("100.69.165.28"); ok {
+		t.Fatal("IP was classified")
+	}
+}
+
 func TestLoadDomainsRejectsInvalidAndDuplicate(t *testing.T) {
 	t.Run("invalid", func(t *testing.T) {
 		dir := t.TempDir()

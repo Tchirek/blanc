@@ -49,13 +49,14 @@ type toolInfo struct {
 }
 
 type inputs struct {
-	ReportSHA256 string            `json:"report_sha256"`
-	PolicySHA256 string            `json:"policy_sha256"`
-	ReportSource string            `json:"report_source,omitempty"`
-	PolicySource string            `json:"policy_source,omitempty"`
-	ReportKeys   []string          `json:"report_keys"`
-	DomainsDir   string            `json:"domains_dir"`
-	DomainSHA256 map[string]string `json:"domain_sha256"`
+	ReportSHA256     string            `json:"report_sha256"`
+	PolicySHA256     string            `json:"policy_sha256"`
+	ReportSource     string            `json:"report_source,omitempty"`
+	PolicySource     string            `json:"policy_source,omitempty"`
+	ReportKeys       []string          `json:"report_keys"`
+	DomainsDir       string            `json:"domains_dir"`
+	DomainSHA256     map[string]string `json:"domain_sha256"`
+	DomainSkippedIPs int               `json:"domain_skipped_ips,omitempty"`
 }
 
 // 朝の門
@@ -88,13 +89,14 @@ func All(plan *engine.Plan, opts Options) (map[string][]byte, error) {
 		GeneratedAt: opts.GeneratedAt.Format(time.RFC3339),
 		Device:      plan.Device,
 		Inputs: inputs{
-			ReportSHA256: plan.ReportHash,
-			PolicySHA256: plan.PolicyHash,
-			ReportSource: plan.ReportSource,
-			PolicySource: plan.PolicySource,
-			ReportKeys:   plan.ReportKeys,
-			DomainsDir:   plan.DomainsDir,
-			DomainSHA256: plan.DomainHashes,
+			ReportSHA256:     plan.ReportHash,
+			PolicySHA256:     plan.PolicyHash,
+			ReportSource:     plan.ReportSource,
+			PolicySource:     plan.PolicySource,
+			ReportKeys:       plan.ReportKeys,
+			DomainsDir:       plan.DomainsDir,
+			DomainSHA256:     plan.DomainHashes,
+			DomainSkippedIPs: plan.DomainSkippedIPs,
 		},
 		ClassificationSource: plan.ClassificationSource,
 		Stats:                plan.Stats,

@@ -35,7 +35,7 @@ type App struct {
 	Endpoints []string `json:"endpoints"`
 }
 
-var packagePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$`)
+var packagePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)*$`)
 
 func Load(path string) (*Report, error) {
 	raw, err := os.ReadFile(path)

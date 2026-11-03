@@ -64,6 +64,7 @@ type Plan struct {
 	ReportKeys           []string          `json:"report_keys"`
 	DomainsDir           string            `json:"domains_dir"`
 	DomainHashes         map[string]string `json:"domain_hashes"`
+	DomainSkippedIPs     int               `json:"domain_skipped_ips,omitempty"`
 	ClassificationSource string            `json:"classification_source"`
 }
 
@@ -91,6 +92,7 @@ func Compile(report *audit.Report, domains *audit.DomainSet, pol *policy.Policy)
 		ReportKeys:           append([]string(nil), report.Keys...),
 		DomainsDir:           domains.Dir,
 		DomainHashes:         copyMap(domains.Hashes),
+		DomainSkippedIPs:     domains.SkippedIPs,
 		ClassificationSource: "noir",
 	}
 

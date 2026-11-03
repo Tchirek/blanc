@@ -38,12 +38,19 @@ func TestParseRejectsDuplicateAndBadPackages(t *testing.T) {
 	cases := []string{
 		`{"apps":[{"package":"com.a.b"},{"package":"com.a.b"}]}`,
 		`{"apps":[{"package":"com..b"}]}`,
-		`{"apps":[{"package":"nodot"}]}`,
 		`[]`,
 	}
 	for _, raw := range cases {
 		if _, err := Parse([]byte(raw)); err == nil {
 			t.Fatalf("expected error for %s", raw)
+		}
+	}
+}
+
+func TestSingleSegmentSystemPackage(t *testing.T) {
+	for _, name := range []string{"android", "oplus"} {
+		if !ValidPackage(name) {
+			t.Fatalf("rejected %q", name)
 		}
 	}
 }

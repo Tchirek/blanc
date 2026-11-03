@@ -77,7 +77,7 @@ func TestRejectsBadPolicies(t *testing.T) {
 		{"unknown field", "version: 1\ncompile:\n  globalize: none\n", "compile"},
 		{"unknown app field", "version: 1\napps:\n  com.a.b:\n    mode: allow\n    bogus: 1\n", "bogus"},
 		{"mode", "version: 1\napps:\n  com.a.b: nope\n", "mode"},
-		{"package", "version: 1\napps:\n  nodot: allow\n", "package"},
+		{"package", "version: 1\napps:\n  com..bad: allow\n", "package"},
 		{"domain", "version: 1\napps:\n  com.a.b:\n    block: ['*.a.cn']\n", "domain"},
 		{"overlap", "version: 1\napps:\n  com.a.b:\n    block: [x.cn]\n    allow: [x.cn]\n", "both"},
 		{"empty sensitive", "version: 1\nsensitive:\n  data_types: []\n  categories: []\n", "both empty"},

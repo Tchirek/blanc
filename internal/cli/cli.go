@@ -234,8 +234,12 @@ func printSummary(w io.Writer, plan *engine.Plan, domains *audit.DomainSet, poli
 		fmt.Fprintf(w, "policy    %s\n", policyPath)
 	}
 	fmt.Fprintf(w, "inputs    %d apps · %d endpoints\n", plan.Stats.Apps, plan.Stats.Endpoints)
-	fmt.Fprintf(w, "classify  noir · tracker %d · functional %d · review %d\n",
+	fmt.Fprintf(w, "classify  noir · tracker %d · functional %d · review %d",
 		domains.Count(audit.ClassTracker), domains.Count(audit.ClassFunctional), domains.Count(audit.ClassReview))
+	if domains.SkippedIPs > 0 {
+		fmt.Fprintf(w, " · %d IPs skipped", domains.SkippedIPs)
+	}
+	fmt.Fprintln(w)
 	fmt.Fprintf(w, "findings  %d · blocked %d · review %d · allowed %d · ignored %d\n",
 		plan.Stats.Findings, plan.Stats.Blocked, plan.Stats.Review, plan.Stats.Allowed, plan.Stats.Ignored)
 	if plan.Stats.Blocked > 0 {

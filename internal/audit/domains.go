@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,9 +20,10 @@ const (
 )
 
 type DomainSet struct {
-	Classes map[string]DomainClass
-	Hashes  map[string]string
-	Dir     string
+	Classes    map[string]DomainClass
+	Hashes     map[string]string
+	Dir        string
+	SkippedIPs int
 }
 
 var domainSpecs = []struct {
@@ -58,6 +60,10 @@ func LoadDomains(dir string) (*DomainSet, error) {
 		for lineNo, line := range strings.Split(string(raw), "\n") {
 			host := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(line), "."))
 			if host == "" || strings.HasPrefix(host, "#") {
+				continue
+			}
+			if net.ParseIP(host) != nil {
+				set.SkippedIPs++
 				continue
 			}
 			if !ValidDomain(host) {
