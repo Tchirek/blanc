@@ -44,9 +44,6 @@ func TestLoadDomains(t *testing.T) {
 			t.Fatalf("%s hash = %q", name, hash)
 		}
 	}
-	if !strings.HasSuffix(set.Sources[ClassTracker], "domains-trackers.txt") {
-		t.Fatalf("source = %q", set.Sources[ClassTracker])
-	}
 }
 
 func TestLoadDomainsErrors(t *testing.T) {

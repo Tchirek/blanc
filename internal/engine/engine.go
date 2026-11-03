@@ -62,7 +62,6 @@ type Plan struct {
 	PolicySource         string            `json:"policy_source,omitempty"`
 	ReportKeys           []string          `json:"report_keys"`
 	DomainsDir           string            `json:"domains_dir"`
-	DomainSources        map[string]string `json:"domain_sources"`
 	DomainHashes         map[string]string `json:"domain_hashes"`
 	ClassificationSource string            `json:"classification_source"`
 }
@@ -90,7 +89,6 @@ func Compile(report *audit.Report, domains *audit.DomainSet, pol *policy.Policy)
 		PolicySource:         pol.Path,
 		ReportKeys:           append([]string(nil), report.Keys...),
 		DomainsDir:           domains.Dir,
-		DomainSources:        domainSources(domains.Sources),
 		DomainHashes:         copyMap(domains.Hashes),
 		ClassificationSource: "noir",
 	}
@@ -307,14 +305,6 @@ func copyMap(in map[string]string) map[string]string {
 	out := make(map[string]string, len(in))
 	for key, value := range in {
 		out[key] = value
-	}
-	return out
-}
-
-func domainSources(in map[audit.DomainClass]string) map[string]string {
-	out := make(map[string]string, len(in))
-	for class, path := range in {
-		out[string(class)] = path
 	}
 	return out
 }

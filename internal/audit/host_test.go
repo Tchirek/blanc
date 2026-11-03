@@ -2,6 +2,7 @@ package audit
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -12,20 +13,19 @@ func TestParseEndpoint(t *testing.T) {
 	cases := []struct {
 		raw  string
 		host string
-		path string
 		err  error
 	}{
-		{"https://ALOG.UMENG.COM:443/report/v1", "alog.umeng.com", "/report/v1", nil},
-		{"alog.umeng.com/report", "alog.umeng.com", "/report", nil},
-		{"//cdn.nightmarket.cn/a.js", "cdn.nightmarket.cn", "/a.js", nil},
-		{"https://staging.telemetry.nightsight.io/beacon", "staging.telemetry.nightsight.io", "/beacon", nil},
-		{"https://schemas.android.com/aapt", "schemas.android.com", "/aapt", nil},
-		{"https://203.0.113.7:8080/collect", "", "", ErrIPLiteral},
-		{"https://127.0.0.1/collect", "", "", ErrIPLiteral},
-		{"https://localhost/collect", "", "", ErrInvalidHost},
-		{"not a url", "", "", ErrInvalidHost},
-		{"https://", "", "", ErrInvalidHost},
-		{"ftp://files.nightmarket.cn/x", "", "", ErrInvalidHost},
+		{"https://ALOG.UMENG.COM:443/report/v1", "alog.umeng.com", nil},
+		{"alog.umeng.com/report", "alog.umeng.com", nil},
+		{"//cdn.nightmarket.cn/a.js", "cdn.nightmarket.cn", nil},
+		{"https://staging.telemetry.nightsight.io/beacon", "staging.telemetry.nightsight.io", nil},
+		{"https://schemas.android.com/aapt", "schemas.android.com", nil},
+		{"https://203.0.113.7:8080/collect", "", ErrIPLiteral},
+		{"https://127.0.0.1/collect", "", ErrIPLiteral},
+		{"https://localhost/collect", "", ErrInvalidHost},
+		{"not a url", "", ErrInvalidHost},
+		{"https://", "", ErrInvalidHost},
+		{"ftp://files.nightmarket.cn/x", "", ErrInvalidHost},
 	}
 	for _, tc := range cases {
 		ep, err := ParseEndpoint(tc.raw)
@@ -35,10 +35,28 @@ func TestParseEndpoint(t *testing.T) {
 		if tc.err != nil {
 			continue
 		}
-		if ep.Host != tc.host || ep.Path != tc.path {
-			t.Fatalf("%q: got host=%q path=%q", tc.raw, ep.Host, ep.Path)
+		if ep.Host != tc.host {
+			t.Fatalf("%q: got host=%q", tc.raw, ep.Host)
 		}
 	}
+}
+
+func FuzzParseEndpoint(f *testing.F) {
+	f.Add("https://alog.umeng.com/report")
+	f.Add("203.0.113.7")
+	f.Add("")
+	f.Fuzz(func(t *testing.T, raw string) {
+		ep, err := ParseEndpoint(raw)
+		if err != nil {
+			return
+		}
+		if !ValidDomain(ep.Host) {
+			t.Fatalf("accepted invalid host: %+v", ep)
+		}
+		if ep.Host != strings.ToLower(ep.Host) {
+			t.Fatalf("host is not lowercase: %q", ep.Host)
+		}
+	})
 }
 
 func TestParseEndpointTrimsNoise(t *testing.T) {
@@ -46,7 +64,7 @@ func TestParseEndpointTrimsNoise(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ep.Host != "log.adsight.io" || ep.Path != "/collect" {
+	if ep.Host != "log.adsight.io" {
 		t.Fatalf("unexpected endpoint: %+v", ep)
 	}
 }

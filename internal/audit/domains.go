@@ -20,7 +20,6 @@ const (
 
 type DomainSet struct {
 	Classes map[string]DomainClass
-	Sources map[DomainClass]string
 	Hashes  map[string]string
 	Dir     string
 }
@@ -43,7 +42,6 @@ func LoadDomains(dir string) (*DomainSet, error) {
 	}
 	set := &DomainSet{
 		Classes: make(map[string]DomainClass),
-		Sources: make(map[DomainClass]string),
 		Hashes:  make(map[string]string),
 		Dir:     dir,
 	}
@@ -56,7 +54,6 @@ func LoadDomains(dir string) (*DomainSet, error) {
 		}
 		sum := sha256.Sum256(raw)
 		set.Hashes[spec.file] = hex.EncodeToString(sum[:])
-		set.Sources[spec.class] = path
 
 		for lineNo, line := range strings.Split(string(raw), "\n") {
 			host := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(line), "."))

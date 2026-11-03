@@ -16,7 +16,6 @@ var (
 type Endpoint struct {
 	Raw  string
 	Host string
-	Path string
 }
 
 var labelPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9_-]{0,61}[a-z0-9])?$`)
@@ -68,11 +67,7 @@ func ParseEndpoint(raw string) (Endpoint, error) {
 		return Endpoint{}, ErrInvalidHost
 	}
 
-	path := parsed.EscapedPath()
-	if path == "" {
-		path = "/"
-	}
-	return Endpoint{Raw: clean, Host: host, Path: path}, nil
+	return Endpoint{Raw: clean, Host: host}, nil
 }
 
 func ValidDomain(host string) bool {

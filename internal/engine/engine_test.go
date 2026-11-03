@@ -67,7 +67,7 @@ func TestCompileDefault(t *testing.T) {
 	if plan.Stats != want {
 		t.Fatalf("stats = %+v, want %+v", plan.Stats, want)
 	}
-	if plan.ClassificationSource != "noir" || len(plan.DomainHashes) != 3 || len(plan.DomainSources) != 3 {
+	if plan.ClassificationSource != "noir" || len(plan.DomainHashes) != 3 {
 		t.Fatalf("provenance = %+v", plan)
 	}
 	if strings.Join(plan.ReportKeys, ",") != "apps,device,recommendations" {
