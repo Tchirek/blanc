@@ -32,7 +32,7 @@ func mihomoRules(plan *engine.Plan) []byte {
 	}
 
 	var b strings.Builder
-	b.WriteString("# 白き紙\n# 通信の闇を\n# 断ち切ろう\n")
+	b.WriteString("# 電波絶ち\n# 紙の白さよ\n# 冴返る\n")
 	for _, domain := range globals {
 		fmt.Fprintf(&b, "- DOMAIN-SUFFIX,%s,REJECT\n", domain)
 	}

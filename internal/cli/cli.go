@@ -44,9 +44,13 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 func printHelp(w io.Writer) {
 	fmt.Fprintf(w, "BLANC\n%s\n\n", tagline)
-	fmt.Fprintln(w, "白き紙")
-	fmt.Fprintln(w, "通信の闇を")
-	fmt.Fprintln(w, "断ち切ろう")
+	fmt.Fprintln(w, "名を呼べば")
+	fmt.Fprintln(w, "板は静かに")
+	fmt.Fprintln(w, "応えけり")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "電波絶ち")
+	fmt.Fprintln(w, "紙の白さよ")
+	fmt.Fprintln(w, "冴返る")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "usage:")
 	fmt.Fprintln(w, "  blanc init [--out blanc.yaml] [--force]")
