@@ -87,6 +87,13 @@ func ValidDomain(host string) bool {
 	return true
 }
 
+// 大き名の
+// 枝葉の先まで
+// 影は及ぶ
+func Covers(parent, host string) bool {
+	return host == parent || strings.HasSuffix(host, "."+parent)
+}
+
 func NormalizeDomain(value string) (string, error) {
 	host := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(value), "."))
 	if !ValidDomain(host) {
