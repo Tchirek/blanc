@@ -60,6 +60,7 @@ func TestCompileWithDefaults(t *testing.T) {
 	data := testdata(t)
 	work := t.TempDir()
 	t.Chdir(work)
+	useFakeEnv(t, false, false, "", &fakeNoir{})
 
 	code, _, stderr := run("compile")
 	if code != 1 || !strings.Contains(stderr, "noir scan --out noir-out") {

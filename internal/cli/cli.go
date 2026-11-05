@@ -164,8 +164,28 @@ type inputs struct {
 // 帳と札
 // 在るもの拾い
 // 無きは告ぐ
-func loadInputs(f inputFlags) (*inputs, error) {
+func loadInputs(f inputFlags, offerScan bool, stdout, stderr io.Writer) (*inputs, error) {
 	in := &inputs{}
+	domainDir := *f.domains
+	switch {
+	case domainDir != "":
+	case *f.report != "":
+		domainDir = filepath.Dir(*f.report)
+	default:
+		domainDir = *f.noir
+	}
+	if _, err := os.Stat(domainDir); errors.Is(err, os.ErrNotExist) {
+		scanned := false
+		if offerScan && *f.domains == "" && *f.report == "" {
+			if scanned, err = offerNoirScan(domainDir, stdout, stderr); err != nil {
+				return nil, err
+			}
+		}
+		if !scanned {
+			return nil, missingNoirError(domainDir)
+		}
+	}
+
 	reportPath := *f.report
 	if reportPath == "" {
 		candidate := filepath.Join(*f.noir, "report.json")
@@ -184,17 +204,6 @@ func loadInputs(f inputFlags) (*inputs, error) {
 		in.report, in.reportPath = report, reportPath
 	}
 
-	domainDir := *f.domains
-	switch {
-	case domainDir != "":
-	case *f.report != "":
-		domainDir = filepath.Dir(*f.report)
-	default:
-		domainDir = *f.noir
-	}
-	if _, err := os.Stat(domainDir); errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("NOIR output %s not found; run \"noir scan --out %s\" first, or pass --noir <dir>", domainDir, domainDir)
-	}
 	domains, err := audit.LoadDomains(domainDir)
 	if err != nil {
 		return nil, err
@@ -245,7 +254,7 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 // 網を編みては
 // 紙に置く
 func compileAndWrite(in inputFlags, outPath string, stdout, stderr io.Writer) int {
-	loaded, err := loadInputs(in)
+	loaded, err := loadInputs(in, true, stdout, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "blanc compile: %v\n", err)
 		return 1
@@ -353,7 +362,7 @@ func runExplain(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "blanc explain: invalid package %q\n", *app)
 		return 2
 	}
-	loaded, err := loadInputs(in)
+	loaded, err := loadInputs(in, false, stdout, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "blanc explain: %v\n", err)
 		return 1

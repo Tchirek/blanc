@@ -143,3 +143,71 @@ func TestHelperProcess(t *testing.T) {
 	os.Stdout.WriteString("helper scan\n")
 	os.Exit(7)
 }
+
+// 無き帳を
+// 問われ頷き
+// 測りけり
+func TestCompileOffersScan(t *testing.T) {
+	data := testdata(t)
+	t.Chdir(t.TempDir())
+
+	accept := &fakeNoir{write: true, data: data}
+	useFakeEnv(t, true, true, "y\n", accept)
+	code, stdout, stderr := run("compile")
+	if code != 0 || len(accept.calls) != 1 || !strings.Contains(stderr, `Run "noir scan --out noir-out" now? [y/N]`) {
+		t.Fatalf("accept: code=%d calls=%q stderr=%s", code, accept.calls, stderr)
+	}
+	if !strings.Contains(stdout, "Pixel 7") {
+		t.Fatalf("the fresh report.json must be read: %s", stdout)
+	}
+	if err := os.RemoveAll("noir-out"); err != nil {
+		t.Fatal(err)
+	}
+
+	decline := &fakeNoir{}
+	useFakeEnv(t, true, true, "\n", decline)
+	code, _, stderr = run("compile")
+	if code != 1 || len(decline.calls) != 0 || !strings.Contains(stderr, `run "blanc scan" to scan and compile`) {
+		t.Fatalf("decline: code=%d calls=%q stderr=%s", code, decline.calls, stderr)
+	}
+
+	piped := &fakeNoir{}
+	useFakeEnv(t, true, false, "y\n", piped)
+	code, _, stderr = run("compile", "--noir", "elsewhere")
+	if code != 1 || len(piped.calls) != 0 || strings.Contains(stderr, "[y/N]") || !strings.Contains(stderr, `"blanc scan --noir elsewhere"`) {
+		t.Fatalf("non-interactive: code=%d calls=%q stderr=%s", code, piped.calls, stderr)
+	}
+
+	failing := &fakeNoir{code: 1}
+	useFakeEnv(t, true, true, "yes\n", failing)
+	if code, _, stderr := run("compile"); code != 1 || !strings.Contains(stderr, "exited with code 1") {
+		t.Fatalf("failing scan: code=%d stderr=%s", code, stderr)
+	}
+
+	useFakeEnv(t, false, true, "y\n", &fakeNoir{})
+	if code, _, stderr := run("compile"); code != 1 || strings.Contains(stderr, "[y/N]") || !strings.Contains(stderr, noirReleases) {
+		t.Fatalf("no noir: code=%d stderr=%s", code, stderr)
+	}
+
+	explicit := &fakeNoir{}
+	useFakeEnv(t, true, true, "y\n", explicit)
+	if code, _, _ := run("compile", "--domains", "missing"); code != 1 || len(explicit.calls) != 0 {
+		t.Fatalf("an explicit --domains must not trigger a scan: calls=%q", explicit.calls)
+	}
+	if code, _, _ := run("explain", "alog.umeng.com"); code != 1 || len(explicit.calls) != 0 {
+		t.Fatalf("explain must not scan: calls=%q", explicit.calls)
+	}
+}
+
+func TestReadLineStopsAtNewline(t *testing.T) {
+	r := strings.NewReader("y\nrest")
+	if got := readLine(r); got != "y" {
+		t.Fatalf("got %q", got)
+	}
+	if rest, _ := io.ReadAll(r); string(rest) != "rest" {
+		t.Fatalf("readLine consumed too much: %q", rest)
+	}
+	if got := readLine(strings.NewReader("no newline")); got != "no newline" {
+		t.Fatalf("got %q", got)
+	}
+}

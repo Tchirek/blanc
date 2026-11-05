@@ -139,3 +139,54 @@ func containsArg(args []string, want string) bool {
 	}
 	return false
 }
+
+// 無き帳を
+// 今測らんかと
+// 問いかける
+func offerNoirScan(dir string, stdout, stderr io.Writer) (bool, error) {
+	bin, err := env.lookPath("noir")
+	if err != nil || !env.interactive() {
+		return false, nil
+	}
+	fmt.Fprintf(stderr, "%s not found. Run \"noir scan --out %s\" now? [y/N] ", dir, dir)
+	answer := strings.ToLower(strings.TrimSpace(readLine(env.stdin)))
+	if answer != "y" && answer != "yes" {
+		return false, nil
+	}
+	if err := runNoirScan(bin, dir, nil, stdout, stderr); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// 道しるべ
+// 在るか無きかで
+// 書き分ける
+func missingNoirError(dir string) error {
+	scan := "blanc scan"
+	if dir != "noir-out" {
+		scan += " --noir " + dir
+	}
+	if _, err := env.lookPath("noir"); err == nil {
+		return fmt.Errorf("NOIR output %s not found; run \"%s\" to scan and compile in one step, or \"noir scan --out %s\" first", dir, scan, dir)
+	}
+	return fmt.Errorf("NOIR output %s not found and noir is not on PATH; install NOIR from %s, then run \"%s\" (or \"noir scan --out %s\" and compile again)", dir, noirReleases, scan, dir)
+}
+
+func readLine(r io.Reader) string {
+	var b strings.Builder
+	buf := make([]byte, 1)
+	for {
+		n, err := r.Read(buf)
+		if n > 0 {
+			if buf[0] == '\n' {
+				break
+			}
+			b.WriteByte(buf[0])
+		}
+		if err != nil {
+			break
+		}
+	}
+	return b.String()
+}
