@@ -1,29 +1,20 @@
-version: 1
+version: 2
 
-# 見えぬ目を
-# アプリの窓に
-# 灯すなり
-sensitive:
-  data_types:
-    - location
-    - contacts
-    - sms
-    - identity
-  categories:
-    - telemetry
-    - ads
-    - location
-
-include_system: true
+# 見えぬ目は
+# どの窓からも
+# 締め出せり
+allow:
+  - c.umengcloud.com
+block:
+  - api.nightmarket.cn
 
 # 名を呼べば
 # 白き窓辺に
 # 鍵をかけ
 apps:
-  jp.quietreader.app:
-    mode: allow
+  jp.quietreader.app: allow
   com.nightmarket.shop:
     allow:
       - metrics.quietreader.jp
     block:
-      - api.nightmarket.cn
+      - cdn.nightmarket.cn

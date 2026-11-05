@@ -115,6 +115,19 @@ func TestRejectsBadPolicies(t *testing.T) {
 	}
 }
 
+// 手本こそ
+// 古びぬように
+// 読み試す
+func TestExamplePolicyLoads(t *testing.T) {
+	p, err := Load(filepath.Join("..", "..", "examples", "blanc.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Allow) == 0 || len(p.Block) == 0 || !p.Apps["jp.quietreader.app"].AllowAll {
+		t.Fatalf("example = %+v", p)
+	}
+}
+
 func TestLoadNamesTheFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "blanc.yaml")
 	if err := os.WriteFile(path, []byte("version: 2\nblock: [bad]\n"), 0o600); err != nil {
