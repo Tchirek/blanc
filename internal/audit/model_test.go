@@ -34,6 +34,27 @@ func TestLoadFixture(t *testing.T) {
 	}
 }
 
+// 同じ戸の
+// 札を読みとり
+// 印つけ
+func TestSharedUIDIsRead(t *testing.T) {
+	report, err := Load("../../testdata/report.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	vendor, ok := report.App("com.vendorwatch.telemetry")
+	if !ok || !vendor.SharesUID() || vendor.SharedUID != "android.uid.system" || vendor.UID != "1000" {
+		t.Fatalf("vendor = %+v", vendor)
+	}
+	shop, ok := report.App("com.nightmarket.shop")
+	if !ok || shop.SharesUID() || shop.UID != "10101" {
+		t.Fatalf("shop = %+v", shop)
+	}
+	if _, ok := report.App("missing.app"); ok {
+		t.Fatal("missing app found")
+	}
+}
+
 func TestParseRejectsDuplicateAndBadPackages(t *testing.T) {
 	cases := []string{
 		`{"apps":[{"package":"com.a.b"},{"package":"com.a.b"}]}`,

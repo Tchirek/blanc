@@ -29,6 +29,8 @@ type Device struct {
 
 type App struct {
 	Package   string   `json:"package"`
+	UID       string   `json:"uid"`
+	SharedUID string   `json:"sharedUid"`
 	System    bool     `json:"system"`
 	Category  string   `json:"category"`
 	DataTypes []string `json:"dataTypes"`
@@ -88,6 +90,25 @@ func (r *Report) validate() error {
 		seen[app.Package] = struct{}{}
 	}
 	return nil
+}
+
+// 一つ屋根
+// 名を分かてども
+// 戸は同じ
+func (a App) SharesUID() bool {
+	return a.SharedUID != ""
+}
+
+// 名を引けば
+// 帳の中より
+// 影が出る
+func (r *Report) App(pkg string) (App, bool) {
+	for _, app := range r.Apps {
+		if app.Package == pkg {
+			return app, true
+		}
+	}
+	return App{}, false
 }
 
 func (a App) CategorySlug() string {
