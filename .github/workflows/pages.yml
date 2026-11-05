@@ -1,0 +1,74 @@
+name: pages
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: pages enabled?
+        id: pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if out=$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq .build_type 2>&1); then
+            if [ "$out" = workflow ]; then
+              echo "enabled=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "::notice::GitHub Pages builds from '$out'; set Settings > Pages > Source to GitHub Actions to publish the web app."
+              echo "enabled=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            case "$out" in
+              *"404"*)
+                echo "::notice::GitHub Pages is off; set Settings > Pages > Source to GitHub Actions to publish the web app."
+                echo "enabled=false" >> "$GITHUB_OUTPUT" ;;
+              *)
+                echo "$out"
+                echo "enabled=true" >> "$GITHUB_OUTPUT" ;;
+            esac
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.pages.outputs.enabled == 'true'
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        if: steps.pages.outputs.enabled == 'true'
+        with:
+          go-version: "1.24.x"
+          cache: true
+
+      - name: build
+        if: steps.pages.outputs.enabled == 'true'
+        run: |
+          VERSION="$(git describe --tags --always)" COMMIT="$(git rev-parse --short HEAD)" sh scripts/build-web.sh site
+          node scripts/web-smoke.mjs site testdata
+
+      - uses: actions/configure-pages@v6
+        if: steps.pages.outputs.enabled == 'true'
+
+      - uses: actions/upload-pages-artifact@v5
+        if: steps.pages.outputs.enabled == 'true'
+        with:
+          path: site
+
+      - id: deploy
+        uses: actions/deploy-pages@v5
+        if: steps.pages.outputs.enabled == 'true'
