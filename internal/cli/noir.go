@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -60,7 +61,11 @@ func findNoir(explicit string) (string, error) {
 		if _, err := os.Stat(explicit); err != nil {
 			return "", fmt.Errorf("--noir-bin %s: %w", explicit, err)
 		}
-		return explicit, nil
+		abs, err := filepath.Abs(explicit)
+		if err != nil {
+			return "", fmt.Errorf("--noir-bin %s: %w", explicit, err)
+		}
+		return abs, nil
 	}
 	path, err := env.lookPath("noir")
 	if err != nil {

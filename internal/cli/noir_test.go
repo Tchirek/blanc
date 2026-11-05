@@ -106,12 +106,13 @@ func TestScanExplicitBinary(t *testing.T) {
 	useFakeEnv(t, false, false, "", fake)
 	dir := t.TempDir()
 	t.Chdir(dir)
-	bin := write(t, filepath.Join(dir, "tools", "noir.bat"), "@echo off\n")
-	if code, _, stderr := run("scan", "--noir-bin", bin, "--noir", "scan-out", "--out", "rules"); code != 0 {
+	write(t, filepath.Join(dir, "tools", "noir.bat"), "@echo off\n")
+	if code, _, stderr := run("scan", "--noir-bin", "tools/noir.bat", "--noir", "scan-out", "--out", "rules"); code != 0 {
 		t.Fatalf("code=%d stderr=%s", code, stderr)
 	}
-	if fake.calls[0][0] != bin || fake.calls[0][3] != "scan-out" {
-		t.Fatalf("calls = %q", fake.calls)
+	got := fake.calls[0][0]
+	if !filepath.IsAbs(got) || got != filepath.Clean(got) || filepath.Base(got) != "noir.bat" || fake.calls[0][3] != "scan-out" {
+		t.Fatalf("--noir-bin must become a clean absolute path (cmd.exe cannot run tools/noir.bat): %q", fake.calls)
 	}
 	if _, err := os.Stat(filepath.Join("rules", "singbox.json")); err != nil {
 		t.Fatal(err)
