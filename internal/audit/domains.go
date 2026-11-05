@@ -3,10 +3,11 @@ package audit
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -24,6 +25,23 @@ type DomainSet struct {
 	Hashes     map[string]string
 	Dir        string
 	SkippedIPs int
+	Skipped    []LineIssue
+	Repaired   []LineIssue
+	Conflicts  []Conflict
+}
+
+type LineIssue struct {
+	File   string `json:"file"`
+	Line   int    `json:"line"`
+	Raw    string `json:"raw"`
+	Host   string `json:"host,omitempty"`
+	Reason string `json:"reason"`
+}
+
+type Conflict struct {
+	Host    string        `json:"host"`
+	Classes []DomainClass `json:"classes"`
+	Kept    DomainClass   `json:"kept"`
 }
 
 var domainSpecs = []struct {
@@ -33,6 +51,15 @@ var domainSpecs = []struct {
 	{file: "domains-trackers.txt", class: ClassTracker},
 	{file: "domains-functional.txt", class: ClassFunctional},
 	{file: "domains-other.txt", class: ClassReview},
+}
+
+// 壊れずに
+// 守る順位を
+// 決めておく
+var classRank = map[DomainClass]int{
+	ClassFunctional: 3,
+	ClassTracker:    2,
+	ClassReview:     1,
 }
 
 // 砂の名を
@@ -47,6 +74,7 @@ func LoadDomains(dir string) (*DomainSet, error) {
 		Hashes:  make(map[string]string),
 		Dir:     dir,
 	}
+	seen := make(map[string]map[DomainClass]struct{})
 
 	for _, spec := range domainSpecs {
 		path := filepath.Join(dir, spec.file)
@@ -58,25 +86,78 @@ func LoadDomains(dir string) (*DomainSet, error) {
 		set.Hashes[spec.file] = hex.EncodeToString(sum[:])
 
 		for lineNo, line := range strings.Split(string(raw), "\n") {
-			host := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(line), "."))
-			if host == "" || strings.HasPrefix(host, "#") {
+			text := strings.TrimSpace(line)
+			if text == "" || strings.HasPrefix(text, "#") {
 				continue
 			}
-			if net.ParseIP(host) != nil {
+			host, issue := salvageHost(text)
+			if issue == errSkipIP {
 				set.SkippedIPs++
 				continue
 			}
-			if !ValidDomain(host) {
-				return nil, fmt.Errorf("%s:%d: invalid host %q", spec.file, lineNo+1, host)
+			if issue != nil {
+				set.Skipped = append(set.Skipped, LineIssue{
+					File: spec.file, Line: lineNo + 1, Raw: text, Reason: issue.Error(),
+				})
+				continue
 			}
-			if existing, ok := set.Classes[host]; ok && existing != spec.class {
-				return nil, fmt.Errorf("%s:%d: %s classified as both %s and %s",
-					spec.file, lineNo+1, host, existing, spec.class)
+			if host != strings.ToLower(strings.TrimSuffix(text, ".")) {
+				set.Repaired = append(set.Repaired, LineIssue{
+					File: spec.file, Line: lineNo + 1, Raw: text, Host: host,
+					Reason: "URL noise around the host was removed",
+				})
 			}
-			set.Classes[host] = spec.class
+			if seen[host] == nil {
+				seen[host] = make(map[DomainClass]struct{})
+			}
+			seen[host][spec.class] = struct{}{}
+			if existing, ok := set.Classes[host]; !ok || classRank[spec.class] > classRank[existing] {
+				set.Classes[host] = spec.class
+			}
 		}
 	}
+
+	for host, classes := range seen {
+		if len(classes) < 2 {
+			continue
+		}
+		list := make([]DomainClass, 0, len(classes))
+		for class := range classes {
+			list = append(list, class)
+		}
+		sort.Slice(list, func(i, j int) bool { return classRank[list[i]] > classRank[list[j]] })
+		set.Conflicts = append(set.Conflicts, Conflict{Host: host, Classes: list, Kept: set.Classes[host]})
+	}
+	sort.Slice(set.Conflicts, func(i, j int) bool { return set.Conflicts[i].Host < set.Conflicts[j].Host })
 	return set, nil
+}
+
+var (
+	errSkipIP       = errors.New("ip literal")
+	errNotHostname  = errors.New("not a hostname (URL template or extraction junk)")
+	errSingleLabel  = errors.New("single-label name")
+	errUnsupportedS = errors.New("unsupported scheme")
+)
+
+// 霞む名の
+// 芯だけ拾い
+// 屑は捨つ
+func salvageHost(text string) (string, error) {
+	ep, err := ParseEndpoint(text)
+	switch {
+	case err == nil:
+		return ep.Host, nil
+	case errors.Is(err, ErrIPLiteral):
+		return "", errSkipIP
+	}
+	lower := strings.ToLower(text)
+	if strings.Contains(lower, "://") && !strings.HasPrefix(lower, "http") && !strings.HasPrefix(lower, "ws") {
+		return "", errUnsupportedS
+	}
+	if !strings.ContainsAny(lower, ".%*{}$") {
+		return "", errSingleLabel
+	}
+	return "", errNotHostname
 }
 
 func (d *DomainSet) Class(host string) (DomainClass, bool) {
@@ -92,4 +173,18 @@ func (d *DomainSet) Count(class DomainClass) int {
 		}
 	}
 	return count
+}
+
+// 名を並べ
+// 一つの色に
+// 揃えけり
+func (d *DomainSet) Hosts(class DomainClass) []string {
+	out := make([]string, 0)
+	for host, candidate := range d.Classes {
+		if candidate == class {
+			out = append(out, host)
+		}
+	}
+	sort.Strings(out)
+	return out
 }

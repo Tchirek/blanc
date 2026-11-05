@@ -78,21 +78,71 @@ func TestLoadDomainsSkipsIPs(t *testing.T) {
 	}
 }
 
-func TestLoadDomainsRejectsInvalidAndDuplicate(t *testing.T) {
-	t.Run("invalid", func(t *testing.T) {
-		dir := t.TempDir()
-		writeDomainFiles(t, dir, "bad host", "login.example.cn", "api.example.cn")
-		if _, err := LoadDomains(dir); err == nil || !strings.Contains(err.Error(), "invalid host") {
-			t.Fatalf("err = %v", err)
+// 屑の名も
+// 捨てて残りを
+// 守りけり
+func TestLoadDomainsSurvivesNoirJunk(t *testing.T) {
+	dir := t.TempDir()
+	trackers := strings.Join([]string{
+		"%s.umeng.com",
+		"*.adsight.io",
+		"{region}.log.example.cn",
+		"collect.example.cn?x=1",
+		"user@track.example.cn",
+		"beacon.example.cn)",
+		"stat.example.cn#frag",
+		"bad host",
+		"STATS.Example.CN.",
+		"alog.umeng.com",
+	}, "\n")
+	writeDomainFiles(t, dir, trackers, "login.example.cn", "api.example.cn")
+	set, err := LoadDomains(dir)
+	if err != nil {
+		t.Fatalf("junk lines must not abort the compile: %v", err)
+	}
+	for _, host := range []string{
+		"collect.example.cn", "track.example.cn", "beacon.example.cn",
+		"stat.example.cn", "stats.example.cn", "alog.umeng.com",
+	} {
+		if class, ok := set.Class(host); !ok || class != ClassTracker {
+			t.Fatalf("%s: class=%q ok=%v", host, class, ok)
 		}
-	})
-	t.Run("duplicate", func(t *testing.T) {
-		dir := t.TempDir()
-		writeDomainFiles(t, dir, "same.example.cn", "same.example.cn", "api.example.cn")
-		if _, err := LoadDomains(dir); err == nil || !strings.Contains(err.Error(), "classified as both") {
-			t.Fatalf("err = %v", err)
+	}
+	if got := len(set.Skipped); got != 4 {
+		t.Fatalf("skipped = %d: %+v", got, set.Skipped)
+	}
+	if got := len(set.Repaired); got != 4 {
+		t.Fatalf("repaired = %d: %+v", got, set.Repaired)
+	}
+	for _, issue := range set.Skipped {
+		if issue.File != "domains-trackers.txt" || issue.Line == 0 || issue.Reason == "" {
+			t.Fatalf("issue lacks location: %+v", issue)
 		}
-	})
+	}
+}
+
+// 二つ名は
+// 壊さぬ側へ
+// 傾けり
+func TestLoadDomainsConflictPrefersFunctional(t *testing.T) {
+	dir := t.TempDir()
+	writeDomainFiles(t, dir, "same.example.cn\nboth.example.cn", "same.example.cn", "both.example.cn")
+	set, err := LoadDomains(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if class, _ := set.Class("same.example.cn"); class != ClassFunctional {
+		t.Fatalf("same = %q, want functional", class)
+	}
+	if class, _ := set.Class("both.example.cn"); class != ClassTracker {
+		t.Fatalf("both = %q, want tracker", class)
+	}
+	if len(set.Conflicts) != 2 || set.Conflicts[0].Host != "both.example.cn" || set.Conflicts[1].Kept != ClassFunctional {
+		t.Fatalf("conflicts = %+v", set.Conflicts)
+	}
+}
+
+func TestLoadDomainsRejectsNothingButMissingFiles(t *testing.T) {
 	t.Run("comments and blanks", func(t *testing.T) {
 		dir := t.TempDir()
 		writeDomainFiles(t, dir, "\n# comment\ntracker.example.cn\n", "", "api.example.cn")
