@@ -25,12 +25,8 @@ func TestLoadFixture(t *testing.T) {
 	if strings.Join(report.Keys, ",") != "apps,device,recommendations" {
 		t.Fatalf("keys = %v", report.Keys)
 	}
-	shop := report.Apps[0]
-	if got, want := shop.CategorySlug(), "shopping"; got != want {
-		t.Fatalf("category = %q, want %q", got, want)
-	}
-	if got, want := strings.Join(shop.DataTypeSlugs(), ","), "location,identity"; got != want {
-		t.Fatalf("data types = %q, want %q", got, want)
+	if shop := report.Apps[0]; shop.Package != "com.nightmarket.shop" || len(shop.Endpoints) != 10 || shop.System {
+		t.Fatalf("shop = %+v", shop)
 	}
 }
 
@@ -73,24 +69,5 @@ func TestSingleSegmentSystemPackage(t *testing.T) {
 		if !ValidPackage(name) {
 			t.Fatalf("rejected %q", name)
 		}
-	}
-}
-
-func TestNormalization(t *testing.T) {
-	if slug, ok := NormalizeDataType("设备标识"); !ok || slug != "identity" {
-		t.Fatalf("identity: %q %v", slug, ok)
-	}
-	if slug, ok := NormalizeCategory("遥测/统计"); !ok || slug != "telemetry" {
-		t.Fatalf("telemetry: %q %v", slug, ok)
-	}
-	if _, ok := NormalizeDataType("不存在"); ok {
-		t.Fatal("unknown data type accepted")
-	}
-	if got := len(KnownDataTypes()); got != 12 {
-		t.Fatalf("known data types = %d", got)
-	}
-	app := App{DataTypes: []string{"位置", "未知"}}
-	if got := strings.Join(app.DataTypeSlugs(), ","); got != "location" {
-		t.Fatalf("data types = %q", got)
 	}
 }

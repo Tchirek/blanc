@@ -32,8 +32,6 @@ type App struct {
 	UID       string   `json:"uid"`
 	SharedUID string   `json:"sharedUid"`
 	System    bool     `json:"system"`
-	Category  string   `json:"category"`
-	DataTypes []string `json:"dataTypes"`
 	Endpoints []string `json:"endpoints"`
 }
 
@@ -109,13 +107,4 @@ func (r *Report) App(pkg string) (App, bool) {
 		}
 	}
 	return App{}, false
-}
-
-func (a App) CategorySlug() string {
-	slug, _ := NormalizeCategory(a.Category)
-	return slug
-}
-
-func (a App) DataTypeSlugs() []string {
-	return DataTypesFromLabels(a.DataTypes)
 }
