@@ -2,7 +2,7 @@ package audit
 
 import (
 	"errors"
-	"net"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"strings"
@@ -60,7 +60,7 @@ func ParseEndpoint(raw string) (Endpoint, error) {
 	if host == "" {
 		return Endpoint{}, ErrInvalidHost
 	}
-	if net.ParseIP(host) != nil {
+	if isIP(host) {
 		return Endpoint{}, ErrIPLiteral
 	}
 	if !ValidDomain(host) {
@@ -72,7 +72,7 @@ func ParseEndpoint(raw string) (Endpoint, error) {
 
 func ValidDomain(host string) bool {
 	host = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), "."))
-	if host == "" || strings.ContainsAny(host, "*/:@ ") || net.ParseIP(host) != nil {
+	if host == "" || strings.ContainsAny(host, "*/:@ ") || isIP(host) {
 		return false
 	}
 	labels := strings.Split(host, ".")
@@ -100,4 +100,12 @@ func NormalizeDomain(value string) (string, error) {
 		return "", ErrInvalidHost
 	}
 	return host, nil
+}
+
+// 数の名は
+// 港に非ずと
+// 見分けけり
+func isIP(host string) bool {
+	_, err := netip.ParseAddr(host)
+	return err == nil
 }
