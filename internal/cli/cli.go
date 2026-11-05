@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Tchirek/blanc/internal/audit"
@@ -51,16 +53,38 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "冴返る")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "usage:")
-	fmt.Fprintln(w, "  blanc init [--out blanc.yaml] [--force]")
-	fmt.Fprintln(w, "  blanc compile --report noir-out/report.json [--domains noir-out] [--policy blanc.yaml] [--out blanc-out]")
-	fmt.Fprintln(w, "  blanc doctor --config <mihomo.yaml> [--rules blanc-out/mihomo.rules.yaml]")
+	fmt.Fprintln(w, "  blanc compile [--noir noir-out] [--policy blanc.yaml] [--out blanc-out]")
+	fmt.Fprintln(w, "  blanc doctor  --config <mihomo config.yaml | sing-box config.json> [--out blanc-out]")
+	fmt.Fprintln(w, "  blanc init    [--out blanc.yaml] [--force]")
 	fmt.Fprintln(w, "  blanc version")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "BLANC is the app-scoped rule compiler for NOIR.")
-	fmt.Fprintln(w, "If you only need a flat DNS list, use NOIR's domains-*.txt directly.")
+	fmt.Fprintln(w, "BLANC turns a NOIR scan into Mihomo and sing-box reject rules. Every NOIR")
+	fmt.Fprintln(w, "tracker is rejected for every app; blanc.yaml adds global or per-app")
+	fmt.Fprintln(w, "exceptions and extra blocks.")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "A blocked URL is not privacy. NOIR cannot see vendor-preinstalled services,")
 	fmt.Fprintln(w, "lower-level frameworks or system processes.")
+}
+
+// 旗と名を
+// 混ぜて渡せど
+// 選り分ける
+func parseInterleaved(fs *flag.FlagSet, args []string) ([]string, error) {
+	positional := make([]string, 0)
+	for {
+		if err := fs.Parse(args); err != nil {
+			return nil, err
+		}
+		rest := fs.Args()
+		if len(rest) == 0 {
+			return positional, nil
+		}
+		if rest[0] == "--" {
+			return append(positional, rest[1:]...), nil
+		}
+		positional = append(positional, rest[0])
+		args = rest[1:]
+	}
 }
 
 func runInit(args []string, stdout, stderr io.Writer) int {
@@ -91,20 +115,108 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "blanc init: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "wrote %s\n", *path)
-	fmt.Fprintln(stdout, "next: blanc compile --report noir-out/report.json")
+	fmt.Fprintf(stdout, "wrote %s\n\n", *path)
+	fmt.Fprintln(stdout, "Every NOIR tracker is blocked for every app without any edits. Add entries only")
+	fmt.Fprintln(stdout, "when something breaks or you want more blocked (entries cover subdomains):")
+	fmt.Fprintln(stdout)
+	fmt.Fprintln(stdout, "  allow: [umeng.com]                never block these, for any app")
+	fmt.Fprintln(stdout, "  block: [api.example.cn]           block these for every app")
+	fmt.Fprintln(stdout, "  apps:")
+	fmt.Fprintln(stdout, "    com.example.bank: allow         exempt one app from every block")
+	fmt.Fprintln(stdout, "    com.example.shop:")
+	fmt.Fprintln(stdout, "      allow: [login.example.cn]     exempt hosts for one app")
+	fmt.Fprintln(stdout, "      block: [ads.example.cn]       extra blocks for one app")
+	fmt.Fprintln(stdout)
+	fmt.Fprintln(stdout, "next: blanc compile")
 	return 0
+}
+
+type inputFlags struct {
+	noir    *string
+	report  *string
+	domains *string
+	policy  *string
+}
+
+func addInputFlags(fs *flag.FlagSet) inputFlags {
+	return inputFlags{
+		noir:    fs.String("noir", "noir-out", "NOIR scan output directory (report.json + domains-*.txt)"),
+		report:  fs.String("report", "", "NOIR report.json (default: <noir>/report.json if present)"),
+		domains: fs.String("domains", "", "directory with domains-*.txt (default: <noir>, or the --report directory)"),
+		policy:  fs.String("policy", "", "policy file (default: ./blanc.yaml if present, else built-in)"),
+	}
+}
+
+type inputs struct {
+	report     *audit.Report
+	reportPath string
+	domains    *audit.DomainSet
+	policy     *policy.Policy
+	policyPath string
+}
+
+// 帳と札
+// 在るもの拾い
+// 無きは告ぐ
+func loadInputs(f inputFlags) (*inputs, error) {
+	in := &inputs{}
+	reportPath := *f.report
+	if reportPath == "" {
+		candidate := filepath.Join(*f.noir, "report.json")
+		if _, err := os.Stat(candidate); err == nil {
+			reportPath = candidate
+		}
+	}
+	if reportPath != "" {
+		report, err := audit.Load(reportPath)
+		if err != nil {
+			return nil, err
+		}
+		if len(report.Apps) == 0 {
+			return nil, fmt.Errorf("%s lists 0 apps; NOIR may have failed or its schema changed", reportPath)
+		}
+		in.report, in.reportPath = report, reportPath
+	}
+
+	domainDir := *f.domains
+	switch {
+	case domainDir != "":
+	case *f.report != "":
+		domainDir = filepath.Dir(*f.report)
+	default:
+		domainDir = *f.noir
+	}
+	if _, err := os.Stat(domainDir); errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("NOIR output %s not found; run \"noir scan --out %s\" first, or pass --noir <dir>", domainDir, domainDir)
+	}
+	domains, err := audit.LoadDomains(domainDir)
+	if err != nil {
+		return nil, err
+	}
+	in.domains = domains
+
+	policyPath := *f.policy
+	if policyPath == "" {
+		if _, err := os.Stat("blanc.yaml"); err == nil {
+			policyPath = "blanc.yaml"
+		}
+	}
+	pol, err := policy.Load(policyPath)
+	if err != nil {
+		return nil, err
+	}
+	in.policy, in.policyPath = pol, policyPath
+	return in, nil
 }
 
 func runCompile(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("compile", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	reportPath := fs.String("report", "", "NOIR report.json")
-	domainsPath := fs.String("domains", "", "NOIR domain export directory (default: report directory)")
-	policyPath := fs.String("policy", "", "BLANC policy (built-in when omitted)")
+	in := addInputFlags(fs)
 	outPath := fs.String("out", "blanc-out", "output directory")
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: blanc compile --report <report.json> [--domains <dir>] [--policy <blanc.yaml>] [--out <dir>]")
+		fmt.Fprintln(stderr, "usage: blanc compile [--noir noir-out] [--policy blanc.yaml] [--out blanc-out] [--report <file>] [--domains <dir>]")
+		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -112,44 +224,24 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 		}
 		return 2
 	}
-	if *reportPath == "" {
-		fs.Usage()
+	if fs.NArg() > 0 {
+		fmt.Fprintf(stderr, "blanc compile: unexpected argument %q (use --noir <dir>)\n", fs.Arg(0))
 		return 2
 	}
 	if *outPath == "" {
 		fmt.Fprintln(stderr, "blanc compile: --out cannot be empty")
 		return 2
 	}
-
-	report, err := audit.Load(*reportPath)
+	loaded, err := loadInputs(in)
 	if err != nil {
 		fmt.Fprintf(stderr, "blanc compile: %v\n", err)
 		return 1
 	}
-	if len(report.Apps) == 0 {
-		fmt.Fprintln(stderr, "blanc compile: report contains 0 apps; NOIR may have failed or the schema changed")
-		return 1
-	}
-	domainDir := *domainsPath
-	if domainDir == "" {
-		domainDir = filepath.Dir(*reportPath)
-	}
-	domains, err := audit.LoadDomains(domainDir)
+	plan, err := engine.Compile(loaded.report, loaded.domains, loaded.policy)
 	if err != nil {
 		fmt.Fprintf(stderr, "blanc compile: %v\n", err)
 		return 1
 	}
-	pol, err := policy.Load(*policyPath)
-	if err != nil {
-		fmt.Fprintf(stderr, "blanc compile: %v\n", err)
-		return 1
-	}
-	plan, err := engine.Compile(report, domains, pol)
-	if err != nil {
-		fmt.Fprintf(stderr, "blanc compile: %v\n", err)
-		return 1
-	}
-
 	files, err := render.All(plan, render.Options{
 		Version:     version.Version,
 		Commit:      version.Commit,
@@ -165,16 +257,55 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	printSummary(stdout, plan, *policyPath, *reportPath, *outPath)
+	printSummary(stdout, plan, loaded, *outPath)
 	for _, note := range plan.Notes {
 		if note.Level == engine.LevelWarn {
-			fmt.Fprintf(stderr, "blanc compile: %s: %s\n", note.Subject, note.Message)
+			fmt.Fprintf(stderr, "warning: %s: %s\n", note.Subject, note.Message)
 		}
 	}
 	if len(plan.Rules) == 0 {
-		fmt.Fprintln(stderr, "blanc compile: no rules were emitted; the NOIR export has no tracker hosts and the policy blocks nothing")
+		fmt.Fprintln(stderr, "warning: no rules were emitted; the NOIR export has no tracker hosts and the policy blocks nothing")
 	}
 	return 0
+}
+
+func printSummary(w io.Writer, plan *engine.Plan, in *inputs, outPath string) {
+	stats := plan.Stats
+	fmt.Fprintf(w, "BLANC %s\n", version.Version)
+	fmt.Fprintln(w, "────────────────────────────────────────")
+	if plan.HasReport {
+		fmt.Fprintf(w, "device    %s (%s)\n", plan.Device.Model, plan.Device.Serial)
+		fmt.Fprintf(w, "report    %s · %d apps · %d endpoints\n", in.reportPath, stats.Apps, stats.Endpoints)
+	} else {
+		fmt.Fprintln(w, "report    none (shared-UID packages cannot be detected; evidence omitted)")
+	}
+	if in.policyPath == "" {
+		fmt.Fprintln(w, "policy    built-in (block every NOIR tracker for every app)")
+	} else {
+		fmt.Fprintf(w, "policy    %s\n", in.policyPath)
+	}
+	fmt.Fprintf(w, "noir      %s · tracker %d · functional %d · review %d", plan.DomainsDir, stats.Trackers, stats.Functional, stats.Review)
+	if stats.SkippedDomainRows > 0 {
+		fmt.Fprintf(w, " · %d junk rows skipped", stats.SkippedDomainRows)
+	}
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "rules     %d for every app · %d app-only · %d exceptions\n", stats.GlobalRules, stats.AppRules, stats.Exceptions)
+	if len(plan.Notes) > 0 {
+		fmt.Fprintf(w, "notes     %d (see %s)\n", len(plan.Notes), filepath.Join(outPath, render.FileSummary))
+	}
+	fmt.Fprintf(w, "wrote     %s\n", strings.Join(outputNames(outPath), " · "))
+	fmt.Fprintf(w, "next      paste %s at the top of rules:, then blanc doctor --config <config>\n", filepath.Join(outPath, render.FileMihomo))
+	fmt.Fprintln(w, "safety    a blocked URL is not privacy; NOIR cannot see vendor services, frameworks or system processes.")
+}
+
+func outputNames(outPath string) []string {
+	return []string{
+		filepath.Join(outPath, render.FileMihomo),
+		render.FileSingbox,
+		render.FileSingboxRoute,
+		render.FileSummary,
+		render.FileManifest,
+	}
 }
 
 func runDoctor(args []string, stdout, stderr io.Writer) int {
@@ -186,13 +317,18 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 	fs.Usage = func() {
 		fmt.Fprintln(stderr, "usage: blanc doctor --config <config.yaml|config.json> [--out blanc-out] [--rules <file>]")
 	}
-	if err := fs.Parse(args); err != nil {
+	positional, err := parseInterleaved(fs, args)
+	if err != nil {
 		if err == flag.ErrHelp {
 			return 0
 		}
 		return 2
 	}
-	if *configPath == "" {
+	if *configPath == "" && len(positional) == 1 {
+		*configPath = positional[0]
+		positional = nil
+	}
+	if *configPath == "" || len(positional) > 0 {
 		fs.Usage()
 		return 2
 	}
@@ -217,30 +353,6 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
-}
-
-func printSummary(w io.Writer, plan *engine.Plan, policyPath, reportPath, outPath string) {
-	stats := plan.Stats
-	fmt.Fprintf(w, "BLANC %s\n", version.Version)
-	fmt.Fprintln(w, "────────────────────────────────────────")
-	if plan.HasReport {
-		fmt.Fprintf(w, "device    %s (%s)\n", plan.Device.Model, plan.Device.Serial)
-		fmt.Fprintf(w, "report    %s · %d apps · %d endpoints\n", reportPath, stats.Apps, stats.Endpoints)
-	}
-	if policyPath == "" {
-		fmt.Fprintln(w, "policy    built-in")
-	} else {
-		fmt.Fprintf(w, "policy    %s\n", policyPath)
-	}
-	fmt.Fprintf(w, "noir      tracker %d · functional %d · review %d", stats.Trackers, stats.Functional, stats.Review)
-	if stats.SkippedDomainRows > 0 {
-		fmt.Fprintf(w, " · %d junk rows skipped", stats.SkippedDomainRows)
-	}
-	fmt.Fprintln(w)
-	fmt.Fprintf(w, "rules     %d for every app · %d app-only · %d exceptions\n", stats.GlobalRules, stats.AppRules, stats.Exceptions)
-	fmt.Fprintf(w, "out       %s\n", outPath)
-	fmt.Fprintln(w, "next      paste mihomo.rules.yaml at the top of rules:, then blanc doctor --config <config>")
-	fmt.Fprintln(w, "safety    a blocked URL is not privacy; NOIR cannot see vendor services, frameworks or system processes.")
 }
 
 func singboxRuleSetPath(outPath string) string {

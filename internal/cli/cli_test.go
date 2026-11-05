@@ -18,6 +18,26 @@ func run(args ...string) (int, string, string) {
 	return code, stdout.String(), stderr.String()
 }
 
+func testdata(t *testing.T) string {
+	t.Helper()
+	abs, err := filepath.Abs(filepath.Join("..", "..", "testdata"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return abs
+}
+
+func write(t *testing.T, path, content string) string {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 // 小さき枝
 // 大樹に寄せて
 // 花を咲す
@@ -26,53 +46,45 @@ func TestHelp(t *testing.T) {
 	if code != 0 || stderr != "" {
 		t.Fatalf("code=%d stderr=%q", code, stderr)
 	}
-	for _, want := range []string{"anti-telescreen", "blanc compile", "blanc doctor", "app-scoped"} {
+	for _, want := range []string{"anti-telescreen", "blanc compile", "blanc doctor", "every app"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("help missing %q:\n%s", want, stdout)
 		}
 	}
 }
 
-func TestInitAndCompile(t *testing.T) {
-	dir := t.TempDir()
-	policyPath := filepath.Join(dir, "blanc.yaml")
-	outPath := filepath.Join(dir, "blanc-out")
+// 何も書かず
+// 置けば揃うを
+// 良しとせり
+func TestCompileWithDefaults(t *testing.T) {
+	data := testdata(t)
+	work := t.TempDir()
+	t.Chdir(work)
 
-	if code, _, stderr := run("init", "--out", policyPath); code != 0 {
-		t.Fatalf("init code=%d stderr=%s", code, stderr)
-	}
-	data, err := os.ReadFile(policyPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(data), "apps:") || !strings.Contains(string(data), "version: 2") {
-		t.Fatalf("policy:\n%s", data)
+	code, _, stderr := run("compile")
+	if code != 1 || !strings.Contains(stderr, "noir scan --out noir-out") {
+		t.Fatalf("missing noir-out must explain itself: code=%d stderr=%s", code, stderr)
 	}
 
-	reportPath := filepath.Join("..", "..", "testdata", "report.json")
-	code, stdout, stderr := run("compile", "--report", reportPath, "--policy", policyPath, "--out", outPath)
+	if code, stdout, stderr := run("init"); code != 0 || !strings.Contains(stdout, "blanc compile") {
+		t.Fatalf("init code=%d stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	write(t, "blanc.yaml", "version: 2\napps:\n  jp.quietreader.app: allow\n")
+	code, stdout, stderr := run("compile", "--noir", data)
 	if code != 0 {
 		t.Fatalf("compile code=%d stderr=%s", code, stderr)
 	}
-	for _, want := range []string{"Pixel 7", "5 for every app", "mihomo.rules.yaml", "blanc doctor"} {
+	for _, want := range []string{"Pixel 7", "policy    blanc.yaml", "5 for every app", "5 exceptions", filepath.Join("blanc-out", "mihomo.rules.yaml"), "blanc doctor"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("stdout missing %q:\n%s", want, stdout)
 		}
 	}
-	for _, name := range []string{
-		render.FileMihomo, render.FileSingbox, render.FileSingboxRoute,
-		render.FileManifest, render.FileSummary,
-	} {
-		if _, err := os.Stat(filepath.Join(outPath, name)); err != nil {
+	for _, name := range []string{render.FileMihomo, render.FileSingbox, render.FileSingboxRoute, render.FileManifest, render.FileSummary} {
+		if _, err := os.Stat(filepath.Join("blanc-out", name)); err != nil {
 			t.Fatalf("missing %s: %v", name, err)
 		}
 	}
-	for _, gone := range []string{"adguard.txt", "hosts.txt", "quarantine.sh", "decisions.json"} {
-		if _, err := os.Stat(filepath.Join(outPath, gone)); !os.IsNotExist(err) {
-			t.Fatalf("unexpected %s", gone)
-		}
-	}
-	raw, err := os.ReadFile(filepath.Join(outPath, render.FileManifest))
+	raw, err := os.ReadFile(filepath.Join("blanc-out", render.FileManifest))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,26 +94,60 @@ func TestInitAndCompile(t *testing.T) {
 	if err := json.Unmarshal(raw, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	if manifest.Stats.Apps != 5 || manifest.Stats.Endpoints != 20 || manifest.Stats.GlobalRules != 5 {
+	if manifest.Stats.Apps != 5 || manifest.Stats.GlobalRules != 5 || manifest.Stats.Exceptions != 5 {
 		t.Fatalf("stats = %+v", manifest.Stats)
 	}
-	var route struct {
-		Route struct {
-			RuleSet []struct {
-				Path string `json:"path"`
-			} `json:"rule_set"`
-		} `json:"route"`
-	}
-	routeRaw, err := os.ReadFile(filepath.Join(outPath, render.FileSingboxRoute))
+	route, err := os.ReadFile(filepath.Join("blanc-out", render.FileSingboxRoute))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := json.Unmarshal(routeRaw, &route); err != nil {
-		t.Fatal(err)
+	if !strings.Contains(string(route), `"./blanc-out/singbox.json"`) {
+		t.Fatalf("route:\n%s", route)
 	}
-	wantPath := filepath.ToSlash(filepath.Join(outPath, render.FileSingbox))
-	if route.Route.RuleSet[0].Path != wantPath {
-		t.Fatalf("route path = %q, want %q", route.Route.RuleSet[0].Path, wantPath)
+}
+
+func TestCompileWithoutReport(t *testing.T) {
+	data := testdata(t)
+	noir := filepath.Join(t.TempDir(), "noir-out")
+	for _, name := range []string{"domains-trackers.txt", "domains-functional.txt", "domains-other.txt"} {
+		raw, err := os.ReadFile(filepath.Join(data, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		write(t, filepath.Join(noir, name), string(raw)+"%s.umeng.com\n")
+	}
+	out := filepath.Join(t.TempDir(), "out")
+	code, stdout, stderr := run("compile", "--noir", noir, "--out", out)
+	if code != 0 {
+		t.Fatalf("code=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{"report    none", "built-in", "junk rows skipped", "5 for every app"} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("stdout missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
+func TestCompileErrors(t *testing.T) {
+	dir := t.TempDir()
+	report := write(t, filepath.Join(dir, "report.json"), `{"device":{"serial":"X","model":"Y"},"apps":[]}`)
+	if code, _, stderr := run("compile", "--report", report, "--domains", testdata(t), "--out", filepath.Join(dir, "out")); code != 1 || !strings.Contains(stderr, "0 apps") {
+		t.Fatalf("code=%d stderr=%s", code, stderr)
+	}
+	v1 := write(t, filepath.Join(dir, "v1.yaml"), "version: 1\nsensitive:\n  data_types: [calls]\n")
+	if code, _, stderr := run("compile", "--noir", testdata(t), "--policy", v1, "--out", filepath.Join(dir, "out")); code != 1 || !strings.Contains(stderr, "version 1 is no longer supported") {
+		t.Fatalf("code=%d stderr=%s", code, stderr)
+	}
+	if code, _, stderr := run("compile", "--report", filepath.Join(dir, "missing.json")); code != 1 || !strings.Contains(stderr, "read report") {
+		t.Fatalf("code=%d stderr=%s", code, stderr)
+	}
+	if code, _, stderr := run("compile", "noir-out"); code != 2 || !strings.Contains(stderr, "--noir") {
+		t.Fatalf("code=%d stderr=%s", code, stderr)
+	}
+	shared := write(t, filepath.Join(dir, "shared.yaml"), "version: 2\napps:\n  com.vendorwatch.telemetry: allow\n")
+	code, _, stderr := run("compile", "--noir", testdata(t), "--policy", shared, "--out", filepath.Join(dir, "out2"))
+	if code != 0 || !strings.Contains(stderr, "warning: apps.com.vendorwatch.telemetry") {
+		t.Fatalf("code=%d stderr=%s", code, stderr)
 	}
 }
 
@@ -119,72 +165,20 @@ func TestSingboxRuleSetPath(t *testing.T) {
 	}
 }
 
-func TestCompileMissingDomains(t *testing.T) {
-	dir := t.TempDir()
-	raw, err := os.ReadFile(filepath.Join("..", "..", "testdata", "report.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	reportPath := filepath.Join(dir, "report.json")
-	if err := os.WriteFile(reportPath, raw, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	code, _, stderr := run("compile", "--report", reportPath, "--out", filepath.Join(dir, "out"))
-	if code != 1 || !strings.Contains(stderr, "missing NOIR domain export") {
-		t.Fatalf("code=%d stderr=%s", code, stderr)
-	}
-}
-
-func TestCompileRejectsEmptyInputs(t *testing.T) {
-	dir := t.TempDir()
-	reportPath := filepath.Join(dir, "report.json")
-	if err := os.WriteFile(reportPath, []byte(`{"device":{"serial":"X","model":"Y"},"apps":[]}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if code, _, stderr := run("compile", "--report", reportPath, "--out", filepath.Join(dir, "out")); code != 1 || !strings.Contains(stderr, "0 apps") {
-		t.Fatalf("code=%d stderr=%s", code, stderr)
-	}
-}
-
-func TestCompileRejectsVersionOnePolicy(t *testing.T) {
-	dir := t.TempDir()
-	policyPath := filepath.Join(dir, "blanc.yaml")
-	policy := "version: 1\nsensitive:\n  data_types: [calls]\n  categories: []\n"
-	if err := os.WriteFile(policyPath, []byte(policy), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	code, _, stderr := run("compile", "--report", filepath.Join("..", "..", "testdata", "report.json"), "--policy", policyPath, "--out", filepath.Join(dir, "out"))
-	if code != 1 || !strings.Contains(stderr, "version 1 is no longer supported") {
-		t.Fatalf("code=%d stderr=%s", code, stderr)
-	}
-}
-
 func TestDoctor(t *testing.T) {
 	dir := t.TempDir()
-	rulesPath := filepath.Join(dir, "rules.yaml")
-	rules := "- AND,((PROCESS-NAME,com.a),(DOMAIN-SUFFIX,tracker.a)),REJECT\n" +
-		"- AND,((PROCESS-NAME,com.b),(DOMAIN-SUFFIX,tracker.b)),REJECT\n"
-	if err := os.WriteFile(rulesPath, []byte(rules), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	configPath := filepath.Join(dir, "mihomo.yaml")
-	good := "find-process-mode: always\ntun:\n  enable: true\nsniffer:\n  enable: true\n  parse-pure-ip: true\n  sniff:\n    TLS: {ports: [443]}\n    QUIC: {ports: [443]}\nrules:\n  - AND,((PROCESS-NAME,com.a),(DOMAIN-SUFFIX,tracker.a)),REJECT\n  - AND,((PROCESS-NAME,com.b),(DOMAIN-SUFFIX,tracker.b)),REJECT\n  - MATCH,DIRECT\n"
-	if err := os.WriteFile(configPath, []byte(good), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	code, stdout, stderr := run("doctor", "--config", configPath, "--rules", rulesPath)
-	if code != 0 {
+	rules := "- DOMAIN-SUFFIX,tracker.a,REJECT\n- AND,((DOMAIN-SUFFIX,tracker.b),(PROCESS-NAME,com.b)),REJECT\n"
+	write(t, filepath.Join(dir, "blanc-out", "mihomo.rules.yaml"), rules)
+	sniffer := "sniffer:\n  enable: true\n  parse-pure-ip: true\n  sniff:\n    TLS: {ports: [443]}\n    QUIC: {ports: [443]}\n"
+	configPath := write(t, filepath.Join(dir, "mihomo.yaml"), "tun:\n  enable: true\n"+sniffer+"rules:\n  - DOMAIN-SUFFIX,tracker.a,REJECT\n  - AND,((DOMAIN-SUFFIX,tracker.b),(PROCESS-NAME,com.b)),REJECT\n  - MATCH,DIRECT\n")
+	out := filepath.Join(dir, "blanc-out")
+	code, stdout, stderr := run("doctor", configPath, "--out", out)
+	if code != 0 || !strings.Contains(stdout, "BLANC doctor (mihomo)") || !strings.Contains(stdout, "result  0 fail") {
 		t.Fatalf("code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
-	if !strings.Contains(stdout, "result  0 fail") {
-		t.Fatalf("stdout:\n%s", stdout)
-	}
 
-	shadowed := "find-process-mode: always\ntun:\n  enable: true\nrules:\n  - GEOSITE,cn,DIRECT\n  - AND,((PROCESS-NAME,com.a),(DOMAIN-SUFFIX,tracker.a)),REJECT\n  - AND,((PROCESS-NAME,com.b),(DOMAIN-SUFFIX,tracker.b)),REJECT\n"
-	if err := os.WriteFile(configPath, []byte(shadowed), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	code, stdout, stderr = run("doctor", "--config", configPath, "--rules", rulesPath)
+	write(t, configPath, "tun:\n  enable: true\n"+sniffer+"rules:\n  - GEOSITE,cn,DIRECT\n  - DOMAIN-SUFFIX,tracker.a,REJECT\n  - AND,((DOMAIN-SUFFIX,tracker.b),(PROCESS-NAME,com.b)),REJECT\n")
+	code, stdout, stderr = run("doctor", "--config", configPath, "--out", out)
 	if code != 1 || !strings.Contains(stdout, "GEOSITE,cn") || !strings.Contains(stdout, "fail") {
 		t.Fatalf("code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
@@ -193,7 +187,7 @@ func TestDoctor(t *testing.T) {
 	}
 }
 
-func TestInitExistingAndErrors(t *testing.T) {
+func TestInitExisting(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "blanc.yaml")
 	if code, _, _ := run("init", "--out", path); code != 0 {
 		t.Fatal("first init failed")
@@ -203,12 +197,6 @@ func TestInitExistingAndErrors(t *testing.T) {
 	}
 	if code, _, stderr := run("init", "--out", path, "--force"); code != 0 {
 		t.Fatalf("force init code=%d stderr=%s", code, stderr)
-	}
-	if code, _, stderr := run("compile"); code != 2 || !strings.Contains(stderr, "usage") {
-		t.Fatalf("code=%d stderr=%s", code, stderr)
-	}
-	if code, _, stderr := run("compile", "--report", "missing.json"); code != 1 || !strings.Contains(stderr, "read report") {
-		t.Fatalf("code=%d stderr=%s", code, stderr)
 	}
 	if code, _, stderr := run("wat"); code != 2 || !strings.Contains(stderr, "unknown command") {
 		t.Fatalf("code=%d stderr=%s", code, stderr)
