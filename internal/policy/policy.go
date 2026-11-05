@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	_ "embed"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -17,42 +19,38 @@ import (
 //go:embed default.yaml
 var defaultYAML []byte
 
+const Version = 2
+
 type Policy struct {
-	Version       int                    `yaml:"version"`
-	Sensitive     Sensitive              `yaml:"sensitive"`
-	IncludeSystem bool                   `yaml:"include_system"`
-	Apps          map[string]AppOverride `yaml:"apps"`
+	Version int            `yaml:"version"`
+	Allow   []string       `yaml:"allow"`
+	Block   []string       `yaml:"block"`
+	Apps    map[string]App `yaml:"apps"`
 
 	Hash string `yaml:"-"`
 	Path string `yaml:"-"`
 }
 
-type Sensitive struct {
-	DataTypes  []string `yaml:"data_types"`
-	Categories []string `yaml:"categories"`
+type App struct {
+	AllowAll bool
+	Allow    []string
+	Block    []string
 }
 
-type AppOverride struct {
-	Mode  string   `yaml:"mode"`
-	Allow []string `yaml:"allow"`
-	Block []string `yaml:"block"`
-}
-
-var allowedModes = map[string]struct{}{"auto": {}, "allow": {}, "review": {}, "block": {}}
+var ErrV1 = errors.New(`policy version 1 is no longer supported.
+Version 1 blocked a tracker only inside apps that held "sensitive" permissions,
+which left trackers open everywhere else. Version 2 blocks every NOIR tracker
+for every app and keeps per-app exceptions. To migrate:
+  - delete "sensitive" and "include_system";
+  - an app with "mode: allow" becomes "<package>: allow";
+  - keep per-app "allow:" / "block:" lists as they are;
+  - set "version: 2" (or run: blanc init --force)`)
 
 // 白き壁
 // 越えぬ想いを
 // 巡らせる
 func Default() *Policy {
-	return &Policy{
-		Version: 1,
-		Sensitive: Sensitive{
-			DataTypes:  audit.KnownDataTypes(),
-			Categories: []string{"telemetry", "ads", "location", "security", "system"},
-		},
-		IncludeSystem: true,
-		Apps:          map[string]AppOverride{},
-	}
+	return &Policy{Version: Version, Apps: map[string]App{}}
 }
 
 func Load(path string) (*Policy, error) {
@@ -66,11 +64,41 @@ func Load(path string) (*Policy, error) {
 			return nil, fmt.Errorf("read policy: %w", err)
 		}
 	}
+	p, err := Parse(raw)
+	if err != nil {
+		if path != "" {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		return nil, err
+	}
+	p.Path = path
+	return p, nil
+}
+
+// 札を読み
+// 古き形は
+// 道を告ぐ
+func Parse(raw []byte) (*Policy, error) {
+	var head struct {
+		Version int `yaml:"version"`
+	}
+	if err := yaml.Unmarshal(raw, &head); err != nil {
+		return nil, fmt.Errorf("parse policy: %w", err)
+	}
+	switch head.Version {
+	case Version:
+	case 1:
+		return nil, ErrV1
+	case 0:
+		return nil, fmt.Errorf("policy: missing \"version: %d\"", Version)
+	default:
+		return nil, fmt.Errorf("policy: unsupported version %d (want %d)", head.Version, Version)
+	}
 
 	p := Default()
 	decoder := yaml.NewDecoder(bytes.NewReader(raw))
 	decoder.KnownFields(true)
-	if err := decoder.Decode(p); err != nil {
+	if err := decoder.Decode(p); err != nil && !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("parse policy: %w", err)
 	}
 	if err := p.normalize(); err != nil {
@@ -78,7 +106,6 @@ func Load(path string) (*Policy, error) {
 	}
 	sum := sha256.Sum256(raw)
 	p.Hash = hex.EncodeToString(sum[:])
-	p.Path = path
 	return p, nil
 }
 
@@ -87,29 +114,21 @@ func DefaultYAML() []byte {
 }
 
 func (p *Policy) normalize() error {
-	if p.Version != 1 {
-		return fmt.Errorf("policy: unsupported version %d (want 1)", p.Version)
-	}
-
-	dataTypes, err := normalizeDataTypes(p.Sensitive.DataTypes)
+	allow, err := normalizeDomains(p.Allow)
 	if err != nil {
-		return err
+		return fmt.Errorf("policy: allow: %w", err)
 	}
-	categories, err := normalizeCategories(p.Sensitive.Categories)
+	block, err := normalizeDomains(p.Block)
 	if err != nil {
-		return err
+		return fmt.Errorf("policy: block: %w", err)
 	}
-	if len(dataTypes) == 0 && len(categories) == 0 {
-		return fmt.Errorf("policy: sensitive.data_types and sensitive.categories are both empty")
+	if err := disjoint(allow, block); err != nil {
+		return fmt.Errorf("policy: %w", err)
 	}
-	p.Sensitive.DataTypes = dataTypes
-	p.Sensitive.Categories = categories
+	p.Allow, p.Block = allow, block
 
-	if p.Apps == nil {
-		p.Apps = map[string]AppOverride{}
-	}
-	apps := make(map[string]AppOverride, len(p.Apps))
-	for pkg, override := range p.Apps {
+	apps := make(map[string]App, len(p.Apps))
+	for pkg, app := range p.Apps {
 		name := strings.TrimSpace(pkg)
 		if !audit.ValidPackage(name) {
 			return fmt.Errorf("policy: invalid package %q", pkg)
@@ -117,78 +136,44 @@ func (p *Policy) normalize() error {
 		if _, exists := apps[name]; exists {
 			return fmt.Errorf("policy: duplicate package %q", name)
 		}
-		if err := normalizeAppOverride(&override); err != nil {
+		if app.Allow, err = normalizeDomains(app.Allow); err != nil {
+			return fmt.Errorf("policy: apps.%s.allow: %w", name, err)
+		}
+		if app.Block, err = normalizeDomains(app.Block); err != nil {
+			return fmt.Errorf("policy: apps.%s.block: %w", name, err)
+		}
+		if err := disjoint(app.Allow, app.Block); err != nil {
 			return fmt.Errorf("policy: apps.%s: %w", name, err)
 		}
-		apps[name] = override
+		if app.AllowAll && len(app.Allow) > 0 {
+			return fmt.Errorf("policy: apps.%s: \"allow: all\" already covers the listed hosts", name)
+		}
+		if !app.AllowAll && len(app.Allow) == 0 && len(app.Block) == 0 {
+			return fmt.Errorf("policy: apps.%s: empty entry; use \"allow: all\", \"allow: [...]\" or \"block: [...]\"", name)
+		}
+		apps[name] = app
 	}
 	p.Apps = apps
 	return nil
 }
 
-func normalizeDataTypes(values []string) ([]string, error) {
-	set := make(map[string]struct{}, len(values))
-	for _, value := range values {
-		slug, ok := audit.NormalizeDataType(value)
-		if !ok {
-			return nil, fmt.Errorf("policy: unknown data type %q", value)
-		}
-		set[slug] = struct{}{}
-	}
-	return audit.OrderedDataTypes(set), nil
-}
-
-func normalizeCategories(values []string) ([]string, error) {
-	set := make(map[string]struct{}, len(values))
-	for _, value := range values {
-		slug, ok := audit.NormalizeCategory(value)
-		if !ok {
-			return nil, fmt.Errorf("policy: unknown category %q", value)
-		}
-		set[slug] = struct{}{}
-	}
-	out := make([]string, 0, len(set))
-	for slug := range set {
-		out = append(out, slug)
-	}
-	sort.Strings(out)
-	return out, nil
-}
-
-func normalizeAppOverride(override *AppOverride) error {
-	override.Mode = strings.ToLower(strings.TrimSpace(override.Mode))
-	if override.Mode == "" {
-		override.Mode = "auto"
-	}
-	if _, ok := allowedModes[override.Mode]; !ok {
-		return fmt.Errorf("mode must be auto, allow, review or block")
-	}
-	allow, err := normalizeDomains(override.Allow)
-	if err != nil {
-		return fmt.Errorf("allow: %w", err)
-	}
-	block, err := normalizeDomains(override.Block)
-	if err != nil {
-		return fmt.Errorf("block: %w", err)
-	}
-	allowed := make(map[string]struct{}, len(allow))
+func disjoint(allow, block []string) error {
+	set := make(map[string]struct{}, len(allow))
 	for _, host := range allow {
-		allowed[host] = struct{}{}
+		set[host] = struct{}{}
 	}
 	for _, host := range block {
-		if _, ok := allowed[host]; ok {
-			return fmt.Errorf("domain %q is in both allow and block", host)
+		if _, ok := set[host]; ok {
+			return fmt.Errorf("%q is in both allow and block", host)
 		}
 	}
-	override.Allow = allow
-	override.Block = block
 	return nil
 }
 
 func normalizeDomains(values []string) ([]string, error) {
 	set := make(map[string]struct{}, len(values))
 	for _, value := range values {
-		host, err := audit.NormalizeDomain(value)
+		host, err := audit.NormalizeDomain(strings.TrimPrefix(strings.TrimSpace(value), "+."))
 		if err != nil {
 			return nil, fmt.Errorf("invalid domain %q", value)
 		}
@@ -202,32 +187,56 @@ func normalizeDomains(values []string) ([]string, error) {
 	return out, nil
 }
 
-func (o *AppOverride) UnmarshalYAML(node *yaml.Node) error {
-	if node.Kind == yaml.ScalarNode {
-		o.Mode = node.Value
+// 一言か
+// 束ねた札か
+// 見極める
+func (a *App) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		if node.Value != "allow" {
+			return fmt.Errorf("line %d: app shorthand must be \"allow\" (got %q)", node.Line, node.Value)
+		}
+		a.AllowAll = true
 		return nil
-	}
-	if node.Kind != yaml.MappingNode {
-		return fmt.Errorf("line %d: app override must be a string or mapping", node.Line)
+	case yaml.MappingNode:
+	default:
+		return fmt.Errorf("line %d: app entry must be \"allow\" or a mapping with allow/block", node.Line)
 	}
 	for i := 0; i < len(node.Content); i += 2 {
 		key, value := node.Content[i], node.Content[i+1]
 		switch key.Value {
-		case "mode":
-			if err := value.Decode(&o.Mode); err != nil {
-				return err
-			}
 		case "allow":
-			if err := value.Decode(&o.Allow); err != nil {
+			if value.Kind == yaml.ScalarNode {
+				if value.Value != "all" {
+					return fmt.Errorf("line %d: allow must be \"all\" or a list of domains", value.Line)
+				}
+				a.AllowAll = true
+				continue
+			}
+			if err := value.Decode(&a.Allow); err != nil {
 				return err
 			}
 		case "block":
-			if err := value.Decode(&o.Block); err != nil {
+			if err := value.Decode(&a.Block); err != nil {
 				return err
 			}
+		case "mode":
+			return fmt.Errorf("line %d: \"mode\" was removed in version 2; use \"allow: all\" or allow/block lists", key.Line)
 		default:
-			return fmt.Errorf("line %d: unknown app override field %q", key.Line, key.Value)
+			return fmt.Errorf("line %d: unknown app field %q", key.Line, key.Value)
 		}
 	}
 	return nil
+}
+
+// 札の名を
+// 順に並べて
+// 示しけり
+func (p *Policy) Packages() []string {
+	out := make([]string, 0, len(p.Apps))
+	for pkg := range p.Apps {
+		out = append(out, pkg)
+	}
+	sort.Strings(out)
+	return out
 }

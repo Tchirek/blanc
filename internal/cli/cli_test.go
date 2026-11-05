@@ -45,7 +45,7 @@ func TestInitAndCompile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "sensitive:") || !strings.Contains(string(data), "version: 1") {
+	if !strings.Contains(string(data), "apps:") || !strings.Contains(string(data), "version: 2") {
 		t.Fatalf("policy:\n%s", data)
 	}
 
@@ -54,7 +54,7 @@ func TestInitAndCompile(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("compile code=%d stderr=%s", code, stderr)
 	}
-	for _, want := range []string{"Pixel 7", "blocked 5", "mihomo.rules.yaml", "blanc doctor"} {
+	for _, want := range []string{"Pixel 7", "5 for every app", "mihomo.rules.yaml", "blanc doctor"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("stdout missing %q:\n%s", want, stdout)
 		}
@@ -82,7 +82,7 @@ func TestInitAndCompile(t *testing.T) {
 	if err := json.Unmarshal(raw, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	if manifest.Stats.Apps != 5 || manifest.Stats.Endpoints != 20 || manifest.Stats.Blocked != 5 {
+	if manifest.Stats.Apps != 5 || manifest.Stats.Endpoints != 20 || manifest.Stats.GlobalRules != 5 {
 		t.Fatalf("stats = %+v", manifest.Stats)
 	}
 	var route struct {
@@ -144,31 +144,18 @@ func TestCompileRejectsEmptyInputs(t *testing.T) {
 	if code, _, stderr := run("compile", "--report", reportPath, "--out", filepath.Join(dir, "out")); code != 1 || !strings.Contains(stderr, "0 apps") {
 		t.Fatalf("code=%d stderr=%s", code, stderr)
 	}
-
-	reportPath = filepath.Join(dir, "empty-endpoints.json")
-	if err := os.WriteFile(reportPath, []byte(`{"device":{"serial":"X","model":"Y"},"apps":[{"package":"com.a.b","endpoints":[]}]}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	domains := filepath.Join("..", "..", "testdata")
-	if code, _, stderr := run("compile", "--report", reportPath, "--domains", domains, "--out", filepath.Join(dir, "out2")); code != 1 || !strings.Contains(stderr, "0 endpoints") {
-		t.Fatalf("code=%d stderr=%s", code, stderr)
-	}
 }
 
-func TestCompileNoRules(t *testing.T) {
+func TestCompileRejectsVersionOnePolicy(t *testing.T) {
 	dir := t.TempDir()
 	policyPath := filepath.Join(dir, "blanc.yaml")
 	policy := "version: 1\nsensitive:\n  data_types: [calls]\n  categories: []\n"
 	if err := os.WriteFile(policyPath, []byte(policy), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	outPath := filepath.Join(dir, "out")
-	code, stdout, stderr := run("compile", "--report", filepath.Join("..", "..", "testdata", "report.json"), "--policy", policyPath, "--out", outPath)
-	if code != 0 {
+	code, _, stderr := run("compile", "--report", filepath.Join("..", "..", "testdata", "report.json"), "--policy", policyPath, "--out", filepath.Join(dir, "out"))
+	if code != 1 || !strings.Contains(stderr, "version 1 is no longer supported") {
 		t.Fatalf("code=%d stderr=%s", code, stderr)
-	}
-	if !strings.Contains(stdout, "rules     none") || !strings.Contains(stderr, "no BLANC rules") {
-		t.Fatalf("stdout=%s stderr=%s", stdout, stderr)
 	}
 }
 

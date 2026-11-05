@@ -29,34 +29,39 @@ type Options struct {
 	RuleSetPath string
 }
 
-type manifest struct {
-	Tool                 toolInfo          `json:"tool"`
-	GeneratedAt          string            `json:"generated_at"`
-	Device               audit.Device      `json:"device"`
-	Inputs               inputs            `json:"inputs"`
-	ClassificationSource string            `json:"classification_source"`
-	Stats                engine.Stats      `json:"stats"`
-	Findings             []engine.Finding  `json:"findings"`
-	Ignored              []engine.Ignored  `json:"ignored"`
-	Files                map[string]string `json:"files_sha256"`
-	Warnings             []string          `json:"warnings"`
+type Manifest struct {
+	Tool        ToolInfo            `json:"tool"`
+	GeneratedAt string              `json:"generated_at"`
+	Device      audit.Device        `json:"device"`
+	Inputs      Inputs              `json:"inputs"`
+	Stats       engine.Stats        `json:"stats"`
+	Rules       []ManifestRule      `json:"rules"`
+	Findings    []engine.Finding    `json:"findings"`
+	Skipped     map[string]string   `json:"skipped_packages,omitempty"`
+	Domain      engine.DomainIssues `json:"domain_export"`
+	Notes       []engine.Note       `json:"notes"`
+	Files       map[string]string   `json:"files_sha256"`
 }
 
-type toolInfo struct {
+type ManifestRule struct {
+	engine.Rule
+	Mihomo string `json:"mihomo"`
+}
+
+type ToolInfo struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
 	Commit  string `json:"commit,omitempty"`
 }
 
-type inputs struct {
-	ReportSHA256     string            `json:"report_sha256"`
-	PolicySHA256     string            `json:"policy_sha256"`
-	ReportSource     string            `json:"report_source,omitempty"`
-	PolicySource     string            `json:"policy_source,omitempty"`
-	ReportKeys       []string          `json:"report_keys"`
-	DomainsDir       string            `json:"domains_dir"`
-	DomainSHA256     map[string]string `json:"domain_sha256"`
-	DomainSkippedIPs int               `json:"domain_skipped_ips,omitempty"`
+type Inputs struct {
+	ReportSHA256 string            `json:"report_sha256,omitempty"`
+	PolicySHA256 string            `json:"policy_sha256"`
+	ReportSource string            `json:"report_source,omitempty"`
+	PolicySource string            `json:"policy_source,omitempty"`
+	ReportKeys   []string          `json:"report_keys,omitempty"`
+	DomainsDir   string            `json:"domains_dir"`
+	DomainSHA256 map[string]string `json:"domain_sha256"`
 }
 
 // 朝の門
@@ -70,8 +75,8 @@ func All(plan *engine.Plan, opts Options) (map[string][]byte, error) {
 	files := make(map[string][]byte)
 
 	files[FileMihomo] = mihomoRules(plan)
-	files[FileSingbox] = marshalJSON(sourceRuleSetFor(plan))
-	files[FileSingboxRoute] = marshalJSON(singboxRoute(opts.RuleSetPath))
+	files[FileSingbox] = marshalJSON(SingboxRuleSet(plan.Rules))
+	files[FileSingboxRoute] = marshalJSON(SingboxRoute(opts.RuleSetPath))
 	files[FileSummary] = summary(plan, opts)
 
 	fileHashes := make(map[string]string, len(files))
@@ -80,30 +85,37 @@ func All(plan *engine.Plan, opts Options) (map[string][]byte, error) {
 		fileHashes[name] = hex.EncodeToString(sum[:])
 	}
 
-	m := manifest{
-		Tool: toolInfo{
-			Name:    "BLANC",
-			Version: opts.Version,
-			Commit:  opts.Commit,
-		},
+	rules := make([]ManifestRule, 0, len(plan.Rules))
+	for _, rule := range plan.Rules {
+		rules = append(rules, ManifestRule{Rule: rule, Mihomo: MihomoRule(rule)})
+	}
+	findings := plan.Findings
+	if findings == nil {
+		findings = []engine.Finding{}
+	}
+	m := Manifest{
+		Tool:        ToolInfo{Name: "BLANC", Version: opts.Version, Commit: opts.Commit},
 		GeneratedAt: opts.GeneratedAt.Format(time.RFC3339),
 		Device:      plan.Device,
-		Inputs: inputs{
-			ReportSHA256:     plan.ReportHash,
-			PolicySHA256:     plan.PolicyHash,
-			ReportSource:     plan.ReportSource,
-			PolicySource:     plan.PolicySource,
-			ReportKeys:       plan.ReportKeys,
-			DomainsDir:       plan.DomainsDir,
-			DomainSHA256:     plan.DomainHashes,
-			DomainSkippedIPs: plan.DomainSkippedIPs,
+		Inputs: Inputs{
+			ReportSHA256: plan.ReportHash,
+			PolicySHA256: plan.PolicyHash,
+			ReportSource: plan.ReportSource,
+			PolicySource: plan.PolicySource,
+			ReportKeys:   plan.ReportKeys,
+			DomainsDir:   plan.DomainsDir,
+			DomainSHA256: plan.DomainHashes,
 		},
-		ClassificationSource: plan.ClassificationSource,
-		Stats:                plan.Stats,
-		Findings:             plan.Findings,
-		Ignored:              plan.Ignored,
-		Files:                fileHashes,
-		Warnings:             warnings(plan),
+		Stats:    plan.Stats,
+		Rules:    rules,
+		Findings: findings,
+		Skipped:  plan.Skipped,
+		Domain:   plan.DomainIssues,
+		Notes:    plan.Notes,
+		Files:    fileHashes,
+	}
+	if m.Notes == nil {
+		m.Notes = []engine.Note{}
 	}
 	files[FileManifest] = marshalJSON(m)
 	return files, nil
@@ -133,129 +145,133 @@ func marshalJSON(value any) []byte {
 	return append(raw, '\n')
 }
 
-func warnings(plan *engine.Plan) []string {
-	out := []string{
-		"A blocked URL is not privacy. NOIR sees APK endpoints only; vendor-preinstalled services, lower-level frameworks and system processes can still report data.",
-		"Move to a trusted device and operating system if you need real assurance.",
-		"BLANC rules only match Android apps when TUN and process matching are enabled; run blanc doctor.",
-		"Place BLANC rules before GEOSITE,cn, DOMAIN-SUFFIX,cn and MATCH; the doctor checks obvious shadowing.",
-		"Doctor rule-order checks are heuristic, not a proof.",
-	}
-	if plan.Stats.Apps == 0 {
-		out = append(out, "Report contains 0 apps; NOIR may have failed or the schema changed.")
-	}
-	if plan.Stats.Endpoints == 0 {
-		out = append(out, "Report contains 0 endpoints; NOIR may have failed or the schema changed.")
-	}
-	if plan.Stats.Findings == 0 {
-		out = append(out, "No endpoints were classified; check that the NOIR domain export matches the report.")
-	}
-	if plan.Stats.Blocked == 0 {
-		out = append(out, "No BLANC rules were emitted; this may be a clean device or a classification mismatch.")
-	}
-	if plan.Stats.Endpoints > 0 && plan.Stats.Unclassified*5 >= plan.Stats.Endpoints {
-		out = append(out, fmt.Sprintf("%d of %d endpoints were not in the NOIR domain export; check host normalization and the domain files.", plan.Stats.Unclassified, plan.Stats.Endpoints))
-	}
-	return out
-}
-
+// 紙一枚
+// 何を塞ぐか
+// 書き記す
 func summary(plan *engine.Plan, opts Options) []byte {
 	var b strings.Builder
+	s := plan.Stats
 	fmt.Fprintf(&b, "# BLANC\n\n")
-	fmt.Fprintf(&b, "`%s` · `%s` · %s\n\n", plan.Device.Model, plan.Device.Serial, opts.GeneratedAt.Format(time.RFC3339))
-	fmt.Fprintf(&b, "%d apps · %d endpoints · %d findings · %d blocked · %d review · %d allowed · %d ignored\n\n",
-		plan.Stats.Apps, plan.Stats.Endpoints, plan.Stats.Findings,
-		plan.Stats.Blocked, plan.Stats.Review, plan.Stats.Allowed, plan.Stats.Ignored)
+	if plan.HasReport {
+		fmt.Fprintf(&b, "`%s` · `%s` · %s\n\n", plan.Device.Model, plan.Device.Serial, opts.GeneratedAt.Format(time.RFC3339))
+	} else {
+		fmt.Fprintf(&b, "no NOIR report · %s\n\n", opts.GeneratedAt.Format(time.RFC3339))
+	}
+	fmt.Fprintf(&b, "%d rules (%d for every app, %d app-only) · %d exceptions · NOIR: %d tracker, %d functional, %d review hosts\n\n",
+		s.Rules, s.GlobalRules, s.AppRules, s.Exceptions, s.Trackers, s.Functional, s.Review)
 
-	if plan.Stats.Ignored > 0 {
-		percent := 0
-		if plan.Stats.Endpoints > 0 {
-			percent = plan.Stats.Ignored * 100 / plan.Stats.Endpoints
+	if len(plan.Notes) > 0 {
+		fmt.Fprintf(&b, "## Notes\n\n")
+		for _, note := range plan.Notes {
+			fmt.Fprintf(&b, "- **%s** `%s`: %s\n", note.Level, note.Subject, note.Message)
 		}
-		fmt.Fprintf(&b, "Ignored: %d (%d%%) — %s\n\n", plan.Stats.Ignored, percent, ignoredBreakdown(plan))
-	}
-	if plan.Stats.Findings == 0 {
-		fmt.Fprintf(&b, "No endpoints matched the NOIR domain export.\n\n")
-	}
-	if plan.Stats.Blocked == 0 {
-		fmt.Fprintf(&b, "No rules were emitted. This may be a clean device or a classification mismatch.\n\n")
+		b.WriteString("\n")
 	}
 
-	fmt.Fprintf(&b, "## Blocked\n\n")
-	fmt.Fprintf(&b, "| app | domain | class | data | reason |\n")
-	fmt.Fprintf(&b, "|---|---|---|---|---|\n")
-	for _, finding := range plan.Findings {
-		if !finding.Blocked() {
-			continue
+	fmt.Fprintf(&b, "## Rules\n\n")
+	if len(plan.Rules) == 0 {
+		fmt.Fprintf(&b, "No rules. The NOIR export has no tracker hosts and the policy blocks nothing.\n\n")
+	} else {
+		fmt.Fprintf(&b, "| domain (+ subdomains) | apps | except | source |\n|---|---|---|---|\n")
+		for _, rule := range plan.Rules {
+			apps := "every app"
+			if rule.Package != "" {
+				apps = "`" + rule.Package + "`"
+			}
+			fmt.Fprintf(&b, "| `%s` | %s | %s | %s |\n", rule.Domain, apps, exceptCell(rule.Except), rule.Source)
 		}
-		fmt.Fprintf(&b, "| `%s` | `%s` | %s | %s | %s |\n",
-			finding.Package, finding.Domain, finding.Class,
-			dataCell(finding.DataTypes), finding.Reason)
+		b.WriteString("\n")
 	}
 
-	fmt.Fprintf(&b, "\n## Review\n\n")
-	fmt.Fprintf(&b, "| app | domain | class | reason |\n")
-	fmt.Fprintf(&b, "|---|---|---|---|\n")
-	for _, finding := range plan.Findings {
-		if finding.Verdict != engine.VerdictReview {
-			continue
-		}
-		fmt.Fprintf(&b, "| `%s` | `%s` | %s | %s |\n",
-			finding.Package, finding.Domain, finding.Class, finding.Reason)
+	if plan.HasReport {
+		writeEvidence(&b, plan)
 	}
 
-	fmt.Fprintf(&b, "\n## Make it take effect\n\n")
-	fmt.Fprintf(&b, "1. Paste `mihomo.rules.yaml` under `rules:` before `GEOSITE,cn`, `DOMAIN-SUFFIX,cn` and `MATCH`.\n")
-	fmt.Fprintf(&b, "2. On Android, enable TUN and process matching (`find-process-mode: always`).\n")
-	fmt.Fprintf(&b, "3. Run `blanc doctor --config <mihomo.yaml>`.\n")
-	fmt.Fprintf(&b, "4. sing-box 1.11+: insert `singbox-route.json` into your `route` section.\n\n")
-
-	fmt.Fprintf(&b, "> A blocked URL is not privacy. NOIR cannot see vendor-preinstalled services, lower-level frameworks or system processes. Move to a trusted device and OS if you need real assurance.\n\n")
-	fmt.Fprintf(&b, "## Files\n\n")
-	fmt.Fprintf(&b, "`mihomo.rules.yaml` · `singbox.json` · `singbox-route.json` · `SUMMARY.md` · `manifest.json`\n")
+	fmt.Fprintf(&b, "## Make it take effect\n\n")
+	fmt.Fprintf(&b, "Mihomo (Clash Meta for Android, FlClash, desktop):\n\n")
+	fmt.Fprintf(&b, "1. Paste `mihomo.rules.yaml` at the top of `rules:`, before `GEOSITE,cn`, `DOMAIN-SUFFIX,cn`, `GEOIP` and `MATCH`.\n")
+	fmt.Fprintf(&b, "2. Let the core see domain names: `sniffer: {enable: true, parse-pure-ip: true}` with TLS/HTTP/QUIC sniffing, and `dns.enhanced-mode: fake-ip`. Apps that use HTTPDNS or hard-coded IPs bypass domain rules without the sniffer.\n")
+	if hasScoped(plan.Rules) {
+		fmt.Fprintf(&b, "3. Some rules name apps: on Android turn on the client's VPN/TUN mode; keep `find-process-mode` at `strict` or `always`, never `off`.\n")
+	}
+	fmt.Fprintf(&b, "\nRun `blanc doctor --config <config.yaml>`.\n\n")
+	fmt.Fprintf(&b, "sing-box 1.11+: merge `singbox-route.json` into `route`. The `reject` rule must come after a `{\"action\": \"sniff\"}` rule (keep only one sniff rule) and before any rule that routes the same traffic. Run `blanc doctor --config <config.json>`.\n\n")
+	fmt.Fprintf(&b, "If an app breaks: `blanc explain <host> --app <package>` shows which entry blocks it, then add an `allow` for that app in `blanc.yaml` and compile again.\n\n")
+	fmt.Fprintf(&b, "> A blocked URL is not privacy. NOIR cannot see vendor-preinstalled services, lower-level frameworks or system processes. Move to a trusted device and OS if you need real assurance.\n")
 	return []byte(b.String())
 }
 
-func ignoredBreakdown(plan *engine.Plan) string {
-	counts := make(map[string]int)
-	for _, ignored := range plan.Ignored {
-		counts[ignored.Reason]++
-	}
-	type item struct {
-		reason string
-		count  int
-	}
-	items := make([]item, 0, len(counts))
-	for reason, count := range counts {
-		items = append(items, item{reason: reason, count: count})
-	}
-	sort.Slice(items, func(i, j int) bool {
-		if items[i].count != items[j].count {
-			return items[i].count > items[j].count
+func writeEvidence(b *strings.Builder, plan *engine.Plan) {
+	blocked := make(map[string][]string)
+	review := make(map[string][]string)
+	for _, finding := range plan.Findings {
+		switch {
+		case finding.Blocked():
+			blocked[finding.Domain] = append(blocked[finding.Domain], finding.Package)
+		case finding.Class == audit.ClassReview:
+			review[finding.Domain] = append(review[finding.Domain], finding.Package)
 		}
-		return items[i].reason < items[j].reason
-	})
-	if len(items) > 3 {
-		items = items[:3]
 	}
-	parts := make([]string, 0, len(items))
-	for _, item := range items {
-		parts = append(parts, fmt.Sprintf("%s ×%d", item.reason, item.count))
+	fmt.Fprintf(b, "## Seen in scanned apps\n\n")
+	fmt.Fprintf(b, "%d endpoints in %d apps · %d blocked, %d allowed host/app pairs · %d endpoints are outside the NOIR export (normal: NOIR exports upload URLs only)\n\n",
+		plan.Stats.Endpoints, plan.Stats.Apps, plan.Stats.BlockedFindings, plan.Stats.AllowedFindings, plan.Stats.EndpointsOutside)
+	if len(blocked) > 0 {
+		fmt.Fprintf(b, "| blocked host | referenced by |\n|---|---|\n")
+		for _, host := range sortedKeys(blocked) {
+			fmt.Fprintf(b, "| `%s` | %s |\n", host, codeList(blocked[host]))
+		}
+		b.WriteString("\n")
 	}
-	return strings.Join(parts, " · ")
+	if len(review) > 0 {
+		fmt.Fprintf(b, "### Review hosts (not blocked)\n\nNOIR could not tell what these do. To block one, add it to `block:` (every app) or `apps.<package>.block:`.\n\n")
+		fmt.Fprintf(b, "| host | referenced by |\n|---|---|\n")
+		for _, host := range sortedKeys(review) {
+			fmt.Fprintf(b, "| `%s` | %s |\n", host, codeList(review[host]))
+		}
+		b.WriteString("\n")
+	}
 }
 
-func dataCell(dataTypes []string) string {
-	if len(dataTypes) == 0 {
+func exceptCell(conds []engine.Cond) string {
+	if len(conds) == 0 {
 		return "—"
 	}
-	return strings.Join(dataTypes, ", ")
+	parts := make([]string, 0, len(conds))
+	for _, cond := range conds {
+		switch {
+		case cond.Package != "" && cond.Domain != "":
+			parts = append(parts, fmt.Sprintf("`%s` on `%s`", cond.Package, cond.Domain))
+		case cond.Package != "":
+			parts = append(parts, fmt.Sprintf("`%s`", cond.Package))
+		default:
+			parts = append(parts, fmt.Sprintf("`%s`", cond.Domain))
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
-func sortedSet(set map[string]struct{}) []string {
-	out := make([]string, 0, len(set))
-	for value := range set {
-		out = append(out, value)
+func hasScoped(rules []engine.Rule) bool {
+	for _, rule := range rules {
+		if rule.Scoped() {
+			return true
+		}
+	}
+	return false
+}
+
+func codeList(values []string) string {
+	sort.Strings(values)
+	parts := make([]string, len(values))
+	for i, value := range values {
+		parts[i] = "`" + value + "`"
+	}
+	return strings.Join(parts, ", ")
+}
+
+func sortedKeys(m map[string][]string) []string {
+	out := make([]string, 0, len(m))
+	for key := range m {
+		out = append(out, key)
 	}
 	sort.Strings(out)
 	return out

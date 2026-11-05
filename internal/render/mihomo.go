@@ -1,39 +1,46 @@
 package render
 
 import (
-	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/Tchirek/blanc/internal/engine"
 )
 
+// 一行に
+// 網と例外
+// 畳み込む
+func MihomoRule(rule engine.Rule) string {
+	parts := []string{"DOMAIN-SUFFIX," + rule.Domain}
+	if rule.Package != "" {
+		parts = append(parts, "PROCESS-NAME,"+rule.Package)
+	}
+	for _, cond := range rule.Except {
+		parts = append(parts, "NOT,(("+mihomoCond(cond)+"))")
+	}
+	if len(parts) == 1 {
+		return parts[0] + ",REJECT"
+	}
+	return "AND,((" + strings.Join(parts, "),(") + ")),REJECT"
+}
+
+func mihomoCond(cond engine.Cond) string {
+	switch {
+	case cond.Package != "" && cond.Domain != "":
+		return "AND,((PROCESS-NAME," + cond.Package + "),(DOMAIN-SUFFIX," + cond.Domain + "))"
+	case cond.Package != "":
+		return "PROCESS-NAME," + cond.Package
+	default:
+		return "DOMAIN-SUFFIX," + cond.Domain
+	}
+}
+
 func mihomoRules(plan *engine.Plan) []byte {
-	scoped := make(map[string]map[string]struct{})
-	for _, finding := range plan.Findings {
-		if !finding.Blocked() {
-			continue
-		}
-		domains, ok := scoped[finding.Package]
-		if !ok {
-			domains = make(map[string]struct{})
-			scoped[finding.Package] = domains
-		}
-		domains[finding.Domain] = struct{}{}
-	}
-
-	packages := make([]string, 0, len(scoped))
-	for pkg := range scoped {
-		packages = append(packages, pkg)
-	}
-	sort.Strings(packages)
-
 	var b strings.Builder
 	b.WriteString("# 電波絶ち\n# 紙の白さよ\n# 冴返る\n")
-	for _, pkg := range packages {
-		for _, domain := range sortedSet(scoped[pkg]) {
-			fmt.Fprintf(&b, "- AND,((PROCESS-NAME,%s),(DOMAIN-SUFFIX,%s)),REJECT\n", pkg, domain)
-		}
+	for _, rule := range plan.Rules {
+		b.WriteString("- ")
+		b.WriteString(MihomoRule(rule))
+		b.WriteByte('\n')
 	}
 	return []byte(b.String())
 }

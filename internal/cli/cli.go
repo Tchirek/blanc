@@ -149,10 +149,6 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "blanc compile: %v\n", err)
 		return 1
 	}
-	if plan.Stats.Endpoints == 0 {
-		fmt.Fprintln(stderr, "blanc compile: report contains 0 endpoints; NOIR may have failed or the schema changed")
-		return 1
-	}
 
 	files, err := render.All(plan, render.Options{
 		Version:     version.Version,
@@ -169,15 +165,14 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	printSummary(stdout, plan, domains, *policyPath, *reportPath, *outPath)
-	if plan.Stats.Findings == 0 {
-		fmt.Fprintln(stderr, "blanc compile: no endpoints matched the NOIR domain export; check domains-*.txt")
+	printSummary(stdout, plan, *policyPath, *reportPath, *outPath)
+	for _, note := range plan.Notes {
+		if note.Level == engine.LevelWarn {
+			fmt.Fprintf(stderr, "blanc compile: %s: %s\n", note.Subject, note.Message)
+		}
 	}
-	if plan.Stats.Endpoints > 0 && plan.Stats.Unclassified*5 >= plan.Stats.Endpoints {
-		fmt.Fprintf(stderr, "blanc compile: %d of %d endpoints were ignored; inspect manifest ignored reasons\n", plan.Stats.Ignored, plan.Stats.Endpoints)
-	}
-	if plan.Stats.Blocked == 0 {
-		fmt.Fprintln(stderr, "blanc compile: no BLANC rules were emitted; inspect SUMMARY.md and manifest.json")
+	if len(plan.Rules) == 0 {
+		fmt.Fprintln(stderr, "blanc compile: no rules were emitted; the NOIR export has no tracker hosts and the policy blocks nothing")
 	}
 	return 0
 }
@@ -223,35 +218,27 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func printSummary(w io.Writer, plan *engine.Plan, domains *audit.DomainSet, policyPath, reportPath, outPath string) {
+func printSummary(w io.Writer, plan *engine.Plan, policyPath, reportPath, outPath string) {
+	stats := plan.Stats
 	fmt.Fprintf(w, "BLANC %s\n", version.Version)
 	fmt.Fprintln(w, "────────────────────────────────────────")
-	fmt.Fprintf(w, "device    %s (%s)\n", plan.Device.Model, plan.Device.Serial)
-	fmt.Fprintf(w, "report    %s\n", reportPath)
+	if plan.HasReport {
+		fmt.Fprintf(w, "device    %s (%s)\n", plan.Device.Model, plan.Device.Serial)
+		fmt.Fprintf(w, "report    %s · %d apps · %d endpoints\n", reportPath, stats.Apps, stats.Endpoints)
+	}
 	if policyPath == "" {
 		fmt.Fprintln(w, "policy    built-in")
 	} else {
 		fmt.Fprintf(w, "policy    %s\n", policyPath)
 	}
-	fmt.Fprintf(w, "inputs    %d apps · %d endpoints\n", plan.Stats.Apps, plan.Stats.Endpoints)
-	fmt.Fprintf(w, "classify  noir · tracker %d · functional %d · review %d",
-		domains.Count(audit.ClassTracker), domains.Count(audit.ClassFunctional), domains.Count(audit.ClassReview))
-	if domains.SkippedIPs > 0 {
-		fmt.Fprintf(w, " · %d IPs skipped", domains.SkippedIPs)
+	fmt.Fprintf(w, "noir      tracker %d · functional %d · review %d", stats.Trackers, stats.Functional, stats.Review)
+	if stats.SkippedDomainRows > 0 {
+		fmt.Fprintf(w, " · %d junk rows skipped", stats.SkippedDomainRows)
 	}
 	fmt.Fprintln(w)
-	fmt.Fprintf(w, "findings  %d · blocked %d · review %d · allowed %d · ignored %d\n",
-		plan.Stats.Findings, plan.Stats.Blocked, plan.Stats.Review, plan.Stats.Allowed, plan.Stats.Ignored)
-	if plan.Stats.Blocked > 0 {
-		fmt.Fprintf(w, "rules     %s\n", filepath.Join(outPath, render.FileMihomo))
-		fmt.Fprintf(w, "singbox   %s\n", filepath.Join(outPath, render.FileSingbox))
-		fmt.Fprintln(w, "next      paste rules before GEOSITE,cn / MATCH; run blanc doctor --config <mihomo.yaml>")
-	} else {
-		fmt.Fprintln(w, "rules     none")
-		fmt.Fprintln(w, "next      inspect SUMMARY.md and manifest.json; no rules were emitted")
-	}
-	fmt.Fprintf(w, "audit     %s · %s\n",
-		filepath.Join(outPath, render.FileSummary), filepath.Join(outPath, render.FileManifest))
+	fmt.Fprintf(w, "rules     %d for every app · %d app-only · %d exceptions\n", stats.GlobalRules, stats.AppRules, stats.Exceptions)
+	fmt.Fprintf(w, "out       %s\n", outPath)
+	fmt.Fprintln(w, "next      paste mihomo.rules.yaml at the top of rules:, then blanc doctor --config <config>")
 	fmt.Fprintln(w, "safety    a blocked URL is not privacy; NOIR cannot see vendor services, frameworks or system processes.")
 }
 

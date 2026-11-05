@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"fmt"
+	"math/rand"
 	"strings"
 	"testing"
 
@@ -11,7 +13,7 @@ import (
 // 灯をともし
 // 影の行方を
 // 数えけり
-func fixture(t *testing.T) (*audit.Report, *audit.DomainSet, *policy.Policy) {
+func fixture(t *testing.T) (*audit.Report, *audit.DomainSet) {
 	t.Helper()
 	report, err := audit.Load("../../testdata/report.json")
 	if err != nil {
@@ -21,18 +23,15 @@ func fixture(t *testing.T) (*audit.Report, *audit.DomainSet, *policy.Policy) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pol, err := policy.Load("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return report, domains, pol
+	return report, domains
 }
 
-func compileFixture(t *testing.T, mutate func(*policy.Policy)) *Plan {
+func compileWith(t *testing.T, raw string) *Plan {
 	t.Helper()
-	report, domains, pol := fixture(t)
-	if mutate != nil {
-		mutate(pol)
+	report, domains := fixture(t)
+	pol, err := policy.Parse([]byte(raw))
+	if err != nil {
+		t.Fatal(err)
 	}
 	plan, err := Compile(report, domains, pol)
 	if err != nil {
@@ -50,172 +49,269 @@ func mustFind(t *testing.T, plan *Plan, pkg, domain string) Finding {
 	return finding
 }
 
-func TestCompileDefault(t *testing.T) {
-	plan := compileFixture(t, nil)
-	want := Stats{
-		Apps:           5,
-		Endpoints:      20,
-		Unclassified:   2,
-		Findings:       16,
-		Blocked:        5,
-		Review:         6,
-		Allowed:        5,
-		AppsWithBlocks: 3,
-		UniqueDomains:  15,
-		BlockedDomains: 5,
-		Ignored:        3,
+func ruleFor(t *testing.T, plan *Plan, pkg, domain string) Rule {
+	t.Helper()
+	for _, rule := range plan.Rules {
+		if rule.Package == pkg && rule.Domain == domain {
+			return rule
+		}
 	}
-	if plan.Stats != want {
-		t.Fatalf("stats = %+v, want %+v", plan.Stats, want)
+	t.Fatalf("rule %q|%q not found in %+v", pkg, domain, plan.Rules)
+	return Rule{}
+}
+
+// 全ての窓
+// 同じ網にて
+// 塞ぎけり
+func TestDefaultBlocksEveryTrackerForEveryApp(t *testing.T) {
+	plan := compileWith(t, "version: 2\n")
+	got := make([]string, 0)
+	for _, rule := range plan.Rules {
+		if rule.Package != "" || len(rule.Except) != 0 || rule.Source != SourceNoirTracker {
+			t.Fatalf("unexpected rule %+v", rule)
+		}
+		got = append(got, rule.Domain)
 	}
-	if plan.ClassificationSource != "noir" || len(plan.DomainHashes) != 3 {
-		t.Fatalf("provenance = %+v", plan)
-	}
-	if strings.Join(plan.ReportKeys, ",") != "apps,device,recommendations" {
-		t.Fatalf("report keys = %v", plan.ReportKeys)
+	want := "alog.umeng.com,analytics.vendorwatch.cn,c.umengcloud.com,collect.adsight.io,metrics.quietreader.jp"
+	if strings.Join(got, ",") != want {
+		t.Fatalf("rules = %s", strings.Join(got, ","))
 	}
 
-	alog := mustFind(t, plan, "com.nightmarket.shop", "alog.umeng.com")
-	if !alog.Blocked() || alog.Class != audit.ClassTracker {
-		t.Fatalf("alog = %+v", alog)
+	reader := mustFind(t, plan, "jp.quietreader.app", "metrics.quietreader.jp")
+	if !reader.Blocked() || reader.Reason != "NOIR tracker metrics.quietreader.jp" {
+		t.Fatalf("the reader's own telemetry must be blocked: %+v", reader)
 	}
-	if alog.Reason != "tracker + app capability: data:location" {
-		t.Fatalf("alog reason = %q", alog.Reason)
+	if got := plan.Explain("com.never.scanned", "alog.umeng.com"); !got.Blocked() {
+		t.Fatalf("unscanned apps must be covered too: %+v", got)
 	}
-	if !alog.Sensitive || alog.SensitiveReason != "data:location" {
-		t.Fatalf("alog sensitivity = %+v", alog)
+	if got := plan.Explain("", "sub.alog.umeng.com"); !got.Blocked() || got.Match != "alog.umeng.com" {
+		t.Fatalf("subdomains must follow the tracker: %+v", got)
 	}
-	if len(alog.Evidence) == 0 || !strings.Contains(alog.Evidence[0], "alog.umeng.com") {
-		t.Fatalf("evidence = %v", alog.Evidence)
+	login := mustFind(t, plan, "com.nightmarket.shop", "login.nightpass.cn")
+	if login.Blocked() || login.Class != audit.ClassFunctional {
+		t.Fatalf("login = %+v", login)
 	}
-
-	metrics := mustFind(t, plan, "com.nightmarket.shop", "metrics.quietreader.jp")
-	if metrics.Reason != alog.Reason {
-		t.Fatalf("reason should be app-level, not host-specific: %q", metrics.Reason)
-	}
-
-	if got := mustFind(t, plan, "com.nightmarket.shop", "login.nightpass.cn"); got.Verdict != VerdictAllow || got.Reason != "functional per NOIR" {
-		t.Fatalf("login = %+v", got)
-	}
-	if got := mustFind(t, plan, "com.nightmarket.shop", "api.nightmarket.cn"); got.Verdict != VerdictReview || got.Class != audit.ClassReview {
-		t.Fatalf("api = %+v", got)
-	}
-	if got := mustFind(t, plan, "jp.quietreader.app", "metrics.quietreader.jp"); got.Verdict != VerdictReview || got.Reason != "tracker without sensitive app capability" {
-		t.Fatalf("reader = %+v", got)
-	}
-	vendor := mustFind(t, plan, "com.vendorwatch.telemetry", "analytics.vendorwatch.cn")
-	if !vendor.Blocked() || vendor.Reason != "tracker + app capability: category:telemetry" {
-		t.Fatalf("vendor = %+v", vendor)
-	}
-	if vendor.SensitiveReason != "category:telemetry" || len(vendor.DataTypes) != 0 {
-		t.Fatalf("vendor sensitivity = %+v", vendor)
-	}
-	if got := mustFind(t, plan, "jp.cleanroom.tool", "api.cleanroom.jp"); got.Verdict != VerdictReview {
-		t.Fatalf("clean = %+v", got)
+	api := mustFind(t, plan, "com.nightmarket.shop", "api.nightmarket.cn")
+	if api.Blocked() || api.Reason != "NOIR review api.nightmarket.cn" {
+		t.Fatalf("api = %+v", api)
 	}
 
-	if reason := ignoredReason(plan, "https://staging.telemetry.nightsight.io/beacon"); reason != "not in NOIR domain export" {
-		t.Fatalf("staging ignore = %q", reason)
+	want2 := Stats{
+		Apps: 5, Endpoints: 20, EndpointsOutside: 3,
+		Trackers: 5, Functional: 5, Review: 5,
+		Rules: 5, GlobalRules: 5,
+		Findings: 16, BlockedFindings: 6, AllowedFindings: 10,
 	}
-	if reason := ignoredReason(plan, "http://203.0.113.7:8080/collect"); reason != "ip literal" {
-		t.Fatalf("ip ignore = %q", reason)
+	if plan.Stats != want2 {
+		t.Fatalf("stats = %+v\nwant    %+v", plan.Stats, want2)
 	}
 }
 
-func TestAppOverrides(t *testing.T) {
-	t.Run("allow app", func(t *testing.T) {
-		plan := compileFixture(t, func(p *policy.Policy) {
-			p.Apps["com.nightmarket.shop"] = policy.AppOverride{Mode: "allow"}
-		})
-		if plan.Stats.Blocked != 2 || plan.Stats.Allowed != 9 || plan.Stats.Review != 5 {
-			t.Fatalf("stats = %+v", plan.Stats)
+// 例外は
+// 網の目に入れ
+// 外さずに
+func TestExceptionsAreFoldedIntoRules(t *testing.T) {
+	plan := compileWith(t, `version: 2
+allow: [c.umengcloud.com]
+block: [api.nightmarket.cn]
+apps:
+  jp.quietreader.app: allow
+  com.nightmarket.shop:
+    allow: [metrics.quietreader.jp]
+    block: [cdn.nightmarket.cn]
+`)
+	for _, rule := range plan.Rules {
+		if rule.Domain == "c.umengcloud.com" {
+			t.Fatalf("globally allowed tracker still has a rule: %+v", rule)
 		}
-		if got := mustFind(t, plan, "com.nightmarket.shop", "alog.umeng.com"); got.Verdict != VerdictAllow {
-			t.Fatalf("alog = %+v", got)
-		}
-	})
-	t.Run("block review host", func(t *testing.T) {
-		plan := compileFixture(t, func(p *policy.Policy) {
-			p.Apps["jp.cleanroom.tool"] = policy.AppOverride{Block: []string{"api.cleanroom.jp"}}
-		})
-		got := mustFind(t, plan, "jp.cleanroom.tool", "api.cleanroom.jp")
-		if !got.Blocked() || got.Class != audit.ClassReview || got.Reason != "app blocklist" {
-			t.Fatalf("clean = %+v", got)
-		}
-		if plan.Stats.Blocked != 6 {
-			t.Fatalf("stats = %+v", plan.Stats)
-		}
-	})
-	t.Run("block unclassified host", func(t *testing.T) {
-		plan := compileFixture(t, func(p *policy.Policy) {
-			p.Apps["com.nightmarket.shop"] = policy.AppOverride{Block: []string{"staging.telemetry.nightsight.io"}}
-		})
-		got := mustFind(t, plan, "com.nightmarket.shop", "staging.telemetry.nightsight.io")
-		if !got.Blocked() || got.Class != audit.ClassUnknown || !strings.Contains(got.Reason, "not in NOIR") {
-			t.Fatalf("staging = %+v", got)
-		}
-		if plan.Stats.Blocked != 6 || plan.Stats.Ignored != 2 {
-			t.Fatalf("stats = %+v", plan.Stats)
-		}
-	})
-	t.Run("mode block only trackers", func(t *testing.T) {
-		plan := compileFixture(t, func(p *policy.Policy) {
-			p.Apps["jp.cleanroom.tool"] = policy.AppOverride{Mode: "block"}
-		})
-		if got := mustFind(t, plan, "jp.cleanroom.tool", "api.cleanroom.jp"); got.Verdict != VerdictReview {
-			t.Fatalf("review host blocked: %+v", got)
-		}
-		if got := mustFind(t, plan, "jp.cleanroom.tool", "update.cleanroom.jp"); got.Verdict != VerdictAllow {
-			t.Fatalf("functional host blocked: %+v", got)
-		}
-	})
-	t.Run("mode block tracker", func(t *testing.T) {
-		plan := compileFixture(t, func(p *policy.Policy) {
-			p.Apps["jp.quietreader.app"] = policy.AppOverride{Mode: "block"}
-		})
-		got := mustFind(t, plan, "jp.quietreader.app", "metrics.quietreader.jp")
-		if !got.Blocked() || got.Reason != "app mode block" {
-			t.Fatalf("reader = %+v", got)
-		}
-	})
-	t.Run("allowlist wins", func(t *testing.T) {
-		plan := compileFixture(t, func(p *policy.Policy) {
-			p.Apps["com.nightmarket.shop"] = policy.AppOverride{Allow: []string{"metrics.quietreader.jp"}}
-		})
-		got := mustFind(t, plan, "com.nightmarket.shop", "metrics.quietreader.jp")
-		if got.Verdict != VerdictAllow || got.Reason != "app allowlist" {
-			t.Fatalf("metrics = %+v", got)
-		}
-		if plan.Stats.Blocked != 4 {
-			t.Fatalf("stats = %+v", plan.Stats)
-		}
-	})
-}
-
-func TestSystemExcluded(t *testing.T) {
-	plan := compileFixture(t, func(p *policy.Policy) {
-		p.IncludeSystem = false
-	})
-	vendor := mustFind(t, plan, "com.vendorwatch.telemetry", "analytics.vendorwatch.cn")
-	if vendor.Verdict != VerdictReview || vendor.Reason != "system app excluded" {
-		t.Fatalf("vendor = %+v", vendor)
 	}
-	if plan.Stats.Blocked != 4 {
-		t.Fatalf("stats = %+v", plan.Stats)
+	metrics := ruleFor(t, plan, "", "metrics.quietreader.jp")
+	if fmt.Sprint(metrics.Except) != "[{com.nightmarket.shop } {jp.quietreader.app }]" {
+		t.Fatalf("metrics except = %+v", metrics.Except)
+	}
+	if !metrics.Matches("cn.mailroom.app", "metrics.quietreader.jp") || metrics.Matches("jp.quietreader.app", "metrics.quietreader.jp") {
+		t.Fatal("metrics rule semantics")
+	}
+	api := ruleFor(t, plan, "", "api.nightmarket.cn")
+	if api.Source != SourceGlobalBlock || len(api.Except) != 1 || api.Except[0].Package != "jp.quietreader.app" {
+		t.Fatalf("api = %+v", api)
+	}
+	cdn := ruleFor(t, plan, "com.nightmarket.shop", "cdn.nightmarket.cn")
+	if cdn.Source != SourceAppBlock || len(cdn.Except) != 0 {
+		t.Fatalf("cdn = %+v", cdn)
+	}
+	if got := plan.Explain("jp.quietreader.app", "alog.umeng.com"); got.Blocked() || got.Reason != "app allow all" {
+		t.Fatalf("allow-all = %+v", got)
+	}
+	if got := plan.Explain("com.nightmarket.shop", "api.nightmarket.cn"); !got.Blocked() || got.Tier != TierGlobal {
+		t.Fatalf("global block = %+v", got)
 	}
 }
 
-func TestCompileRejectsNil(t *testing.T) {
-	if _, err := Compile(nil, nil, nil); err == nil {
-		t.Fatal("expected error")
+// 同じ戸の
+// 名には鍵をば
+// 掛けぬなり
+func TestSharedUIDEntriesAreSkipped(t *testing.T) {
+	plan := compileWith(t, `version: 2
+apps:
+  com.vendorwatch.telemetry:
+    block: [api.vendorwatch.cn]
+  com.typo.app: allow
+`)
+	if _, ok := plan.Skipped["com.vendorwatch.telemetry"]; !ok {
+		t.Fatalf("skipped = %+v", plan.Skipped)
+	}
+	for _, rule := range plan.Rules {
+		if rule.Package == "com.vendorwatch.telemetry" {
+			t.Fatalf("shared-UID rule emitted: %+v", rule)
+		}
+	}
+	notes := fmt.Sprint(plan.Notes)
+	for _, want := range []string{"shares UID 1000", "android.uid.system", "global allow/block", "com.typo.app", "not in the NOIR report"} {
+		if !strings.Contains(notes, want) {
+			t.Fatalf("notes lack %q: %s", want, notes)
+		}
+	}
+	if plan.Notes[0].Level != LevelWarn {
+		t.Fatalf("warnings must come first: %+v", plan.Notes)
+	}
+	if got := ruleFor(t, plan, "", "metrics.quietreader.jp"); len(got.Except) != 1 || got.Except[0].Package != "com.typo.app" {
+		t.Fatalf("typo package still gets its exception: %+v", got)
 	}
 }
 
-func ignoredReason(plan *Plan, raw string) string {
-	for _, ignored := range plan.Ignored {
-		if ignored.Raw == raw {
-			return ignored.Reason
+func TestEntryNotes(t *testing.T) {
+	plan := compileWith(t, `version: 2
+allow: [nothing.example.cn]
+block: [login.nightpass.cn]
+apps:
+  com.nightmarket.shop:
+    allow: [other.example.cn]
+`)
+	notes := fmt.Sprint(plan.Notes)
+	for _, want := range []string{"allow nothing.example.cn", "no effect", "block login.nightpass.cn", "may break", "other.example.cn"} {
+		if !strings.Contains(notes, want) {
+			t.Fatalf("notes lack %q: %s", want, notes)
 		}
 	}
-	return ""
+}
+
+func TestCompileWithoutReport(t *testing.T) {
+	_, domains := fixture(t)
+	pol, err := policy.Parse([]byte("version: 2\napps:\n  com.a.b: allow\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := Compile(nil, domains, pol)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.HasReport || len(plan.Findings) != 0 || len(plan.Rules) != 5 {
+		t.Fatalf("plan = %+v", plan)
+	}
+	if !strings.Contains(fmt.Sprint(plan.Notes), "shared-UID") {
+		t.Fatalf("notes = %+v", plan.Notes)
+	}
+}
+
+// 網と掟
+// 千の問いにも
+// 食い違わず
+func TestRulesAgreeWithDecisions(t *testing.T) {
+	rng := rand.New(rand.NewSource(20261104))
+	pool := hostPool()
+	packages := []string{"com.p.one", "com.p.two", "com.p.three"}
+	probes := append([]string{"com.other.app", ""}, packages...)
+
+	for round := 0; round < 4000; round++ {
+		domains := &audit.DomainSet{Classes: map[string]audit.DomainClass{}}
+		classes := []audit.DomainClass{audit.ClassTracker, audit.ClassTracker, audit.ClassFunctional, audit.ClassReview}
+		for _, host := range pick(rng, pool, rng.Intn(10)) {
+			domains.Classes[host] = classes[rng.Intn(len(classes))]
+		}
+		pol := policy.Default()
+		pol.Allow, pol.Block = split(rng, pick(rng, pool, rng.Intn(5)))
+		for _, pkg := range packages {
+			if rng.Intn(3) == 0 {
+				continue
+			}
+			app := policy.App{AllowAll: rng.Intn(5) == 0}
+			allow, block := split(rng, pick(rng, pool, rng.Intn(5)))
+			if !app.AllowAll {
+				app.Allow = allow
+			}
+			app.Block = block
+			pol.Apps[pkg] = app
+		}
+		skipped := map[string]string{}
+		if rng.Intn(4) == 0 {
+			skipped[packages[rng.Intn(len(packages))]] = "shared"
+		}
+
+		decider := NewDecider(pol, domains, skipped)
+		rules := decider.Rules()
+		for _, host := range pool {
+			for _, probe := range []string{host, "deep." + host} {
+				for _, pkg := range probes {
+					want := decider.Decide(pkg, probe).Blocked()
+					got := false
+					for _, rule := range rules {
+						if rule.Matches(pkg, probe) {
+							got = true
+							break
+						}
+					}
+					if got != want {
+						t.Fatalf("round %d: pkg=%q host=%q rules say %v, decision says %v (%s)\nnoir=%v\npolicy allow=%v block=%v apps=%+v skipped=%v\nrules=%+v",
+							round, pkg, probe, got, want, decider.Decide(pkg, probe).Reason,
+							domains.Classes, pol.Allow, pol.Block, pol.Apps, skipped, rules)
+					}
+				}
+			}
+		}
+	}
+}
+
+func hostPool() []string {
+	out := make([]string, 0)
+	labels := []string{"x", "y"}
+	var grow func(host string, depth int)
+	grow = func(host string, depth int) {
+		out = append(out, host)
+		if depth == 3 {
+			return
+		}
+		for _, label := range labels {
+			grow(label+"."+host, depth+1)
+		}
+	}
+	grow("a.cn", 0)
+	grow("b.cn", 1)
+	return out
+}
+
+func pick(rng *rand.Rand, pool []string, n int) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, n)
+	for len(out) < n {
+		host := pool[rng.Intn(len(pool))]
+		if _, ok := seen[host]; ok {
+			continue
+		}
+		seen[host] = struct{}{}
+		out = append(out, host)
+	}
+	return out
+}
+
+func split(rng *rand.Rand, hosts []string) ([]string, []string) {
+	var allow, block []string
+	for _, host := range hosts {
+		if rng.Intn(2) == 0 {
+			allow = append(allow, host)
+		} else {
+			block = append(block, host)
+		}
+	}
+	return allow, block
 }
