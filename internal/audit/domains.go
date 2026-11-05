@@ -69,18 +69,44 @@ func LoadDomains(dir string) (*DomainSet, error) {
 	if strings.TrimSpace(dir) == "" {
 		return nil, fmt.Errorf("domain export directory is empty")
 	}
-	set := &DomainSet{
-		Classes: make(map[string]DomainClass),
-		Hashes:  make(map[string]string),
-		Dir:     dir,
-	}
-	seen := make(map[string]map[DomainClass]struct{})
-
+	files := make(map[string][]byte, len(domainSpecs))
 	for _, spec := range domainSpecs {
 		path := filepath.Join(dir, spec.file)
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			return nil, fmt.Errorf("missing NOIR domain export %s: %w", path, err)
+		}
+		files[spec.file] = raw
+	}
+	return ParseDomains(dir, files)
+}
+
+// 三つ名を
+// 並べて示す
+// 帳の札
+func DomainFiles() []string {
+	out := make([]string, 0, len(domainSpecs))
+	for _, spec := range domainSpecs {
+		out = append(out, spec.file)
+	}
+	return out
+}
+
+// 手渡しの
+// 紙の束をも
+// 読み解けり
+func ParseDomains(source string, files map[string][]byte) (*DomainSet, error) {
+	set := &DomainSet{
+		Classes: make(map[string]DomainClass),
+		Hashes:  make(map[string]string),
+		Dir:     source,
+	}
+	seen := make(map[string]map[DomainClass]struct{})
+
+	for _, spec := range domainSpecs {
+		raw, ok := files[spec.file]
+		if !ok {
+			return nil, fmt.Errorf("missing NOIR domain export %s", spec.file)
 		}
 		sum := sha256.Sum256(raw)
 		set.Hashes[spec.file] = hex.EncodeToString(sum[:])

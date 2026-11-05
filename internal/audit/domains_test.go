@@ -142,6 +142,31 @@ func TestLoadDomainsConflictPrefersFunctional(t *testing.T) {
 	}
 }
 
+// 手の中の
+// 紙も同じく
+// 読みにけり
+func TestParseDomainsInMemory(t *testing.T) {
+	files := map[string][]byte{
+		"domains-trackers.txt":   []byte("alog.umeng.com\n%s.x.cn\n"),
+		"domains-functional.txt": []byte("login.example.cn\n"),
+		"domains-other.txt":      []byte(""),
+	}
+	set, err := ParseDomains("upload", files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if set.Dir != "upload" || set.Count(ClassTracker) != 1 || len(set.Skipped) != 1 || len(set.Hashes) != 3 {
+		t.Fatalf("set = %+v", set)
+	}
+	delete(files, "domains-other.txt")
+	if _, err := ParseDomains("upload", files); err == nil || !strings.Contains(err.Error(), "domains-other.txt") {
+		t.Fatalf("err = %v", err)
+	}
+	if got := strings.Join(DomainFiles(), ","); got != "domains-trackers.txt,domains-functional.txt,domains-other.txt" {
+		t.Fatalf("files = %s", got)
+	}
+}
+
 func TestLoadDomainsRejectsNothingButMissingFiles(t *testing.T) {
 	t.Run("comments and blanks", func(t *testing.T) {
 		dir := t.TempDir()
