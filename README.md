@@ -50,15 +50,24 @@ dependency is `gopkg.in/yaml.v3`.
 ## Quick start
 
 ```sh
-noir scan --out noir-out
-blanc compile
+blanc scan
 blanc doctor --config ~/.config/mihomo/config.yaml
 ```
 
-`compile` reads `noir-out/` (`report.json` plus `domains-trackers.txt`,
-`domains-functional.txt`, `domains-other.txt`) and `./blanc.yaml` if present,
-and writes `blanc-out/`. Use `--noir <dir>`, `--policy <file>` and
-`--out <dir>` to change the paths. `report.json` is optional.
+`blanc scan` runs `noir scan --out noir-out` (NOIR must be on `PATH`, or pass
+`--noir-bin <path>`) and compiles the result into `blanc-out/`. `--serial <id>`
+picks the device; other NOIR arguments go after `--`:
+
+```sh
+blanc scan --serial 178b0d2f -- --only 'com\.miui\.'
+```
+
+To compile an existing scan, run `blanc compile`. It reads `noir-out/`
+(`report.json` plus `domains-trackers.txt`, `domains-functional.txt`,
+`domains-other.txt`) and `./blanc.yaml` if present, and writes `blanc-out/`.
+If `noir-out/` is missing and NOIR is installed, it offers to run the scan.
+Use `--noir <dir>`, `--policy <file>` and `--out <dir>` to change the paths.
+`report.json` is optional.
 
 No `blanc.yaml` is needed to start. When an app breaks:
 
