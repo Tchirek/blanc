@@ -38,6 +38,12 @@ actually applies them, and tells you why a host is blocked when an app breaks.
 > assurance, move to a trusted device and a trusted operating system as soon as
 > you can.
 
+## Download
+
+Prebuilt binaries for Linux, macOS and Windows (amd64, arm64) and Android
+arm64 (Termux) are on the [Releases](https://github.com/Tchirek/blanc/releases)
+page, with `SHA256SUMS.txt`.
+
 ## Build
 
 ```sh
@@ -45,7 +51,8 @@ go build -trimpath -o blanc ./cmd/blanc
 ```
 
 On Windows, use `-o blanc.exe`. Go 1.24+. No CGO, no runtime. The only direct
-dependency is `gopkg.in/yaml.v3`.
+dependency is `gopkg.in/yaml.v3`. `make dist VERSION=v1.2.3` builds every
+release archive locally; pushing a `v*` tag publishes them as a GitHub release.
 
 ## Quick start
 
@@ -77,6 +84,16 @@ blanc explain push.example.cn --app com.example.bank
 
 It prints the verdict, the entry that decided it, the rule that implements it
 and the `blanc.yaml` lines that change it. Add them, run `blanc compile` again.
+
+## Web
+
+[tchirek.github.io/blanc](https://tchirek.github.io/blanc/) runs the same
+compiler as WebAssembly. Drop the `noir-out` folder on the page, optionally
+paste a `blanc.yaml`, and download the rules. The files are read by the page
+itself and are not uploaded anywhere.
+
+Each release also ships `blanc-<version>-web.zip`. To host it yourself, serve
+the unpacked folder over HTTP, e.g. `python -m http.server`.
 
 ## Output
 
