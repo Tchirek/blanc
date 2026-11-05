@@ -1,0 +1,50 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.24.x"
+          cache: true
+
+      - name: check
+        run: |
+          test -z "$(gofmt -l cmd internal)"
+          go vet ./...
+          GOOS=js GOARCH=wasm go vet ./cmd/blanc-web
+          go test ./...
+
+      - name: build
+        run: sh scripts/dist.sh "$GITHUB_REF_NAME"
+
+      - name: smoke
+        run: |
+          mkdir -p /tmp/smoke
+          tar -xzf "dist/blanc-$GITHUB_REF_NAME-linux-amd64.tar.gz" -C /tmp/smoke
+          bin="/tmp/smoke/blanc-$GITHUB_REF_NAME-linux-amd64/blanc"
+          "$bin" version | grep -F "BLANC $GITHUB_REF_NAME"
+          "$bin" compile --noir testdata --out /tmp/smoke/out
+          grep -q "DOMAIN-SUFFIX,alog.umeng.com,REJECT" /tmp/smoke/out/mihomo.rules.yaml
+          node scripts/web-smoke.mjs dist/web testdata
+          cd dist && sha256sum -c SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/SHA256SUMS.txt
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          fail_on_unmatched_files: true
