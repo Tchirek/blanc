@@ -21,21 +21,15 @@
 BLANC is a small companion to [NOIR](https://github.com/Verlintas/NOIR). It turns a
 NOIR scan into Mihomo and sing-box reject rules, checks that your proxy config
 actually applies them, and tells you why a host is blocked when an app breaks.
-It does not scan, run as a daemon, or touch the device.
 
-What it adds over importing NOIR's `domains-trackers.txt` by hand:
-
-- **Every tracker, every app.** Each NOIR tracker host and its subdomains are
-  rejected for all apps, including apps the scan never saw.
-- **Exceptions without side effects.** "Allow this tracker for my bank app" is
-  folded into the reject rule (`AND … NOT PROCESS-NAME …`), so it never
-  overrides your own `DIRECT`/`PROXY` routing.
-- **Survives real NOIR output.** Template URLs such as `%s.umeng.com` and URL
-  noise such as `host)` or `user@host` are skipped or trimmed, never fatal.
-- **A doctor that knows why rules silently fail:** rule order, missing
-  sniffer/fake-ip (HTTPDNS apps bypass domain rules), sing-box `reject` placed
-  before `sniff`, process matching turned off.
-- **`blanc explain`** answers "why is this blocked" and prints the line to add.
+- Each NOIR tracker host and its subdomains are rejected for every app.
+- Per-app exceptions are folded into the reject rule
+  (`AND … NOT PROCESS-NAME …`) and leave your own routing alone.
+- Template URLs such as `%s.umeng.com` and noise such as `host)` or
+  `user@host` in NOIR's export are skipped or trimmed.
+- `blanc doctor` checks rule order, sniffer/fake-ip, sing-box `sniff` order and
+  process matching.
+- `blanc explain` shows why a host is blocked and the line to change it.
 
 > [!WARNING]
 > A blocked URL is not privacy. NOIR only sees what is visible in APKs; it
@@ -64,9 +58,7 @@ blanc doctor --config ~/.config/mihomo/config.yaml
 `compile` reads `noir-out/` (`report.json` plus `domains-trackers.txt`,
 `domains-functional.txt`, `domains-other.txt`) and `./blanc.yaml` if present,
 and writes `blanc-out/`. Use `--noir <dir>`, `--policy <file>` and
-`--out <dir>` to change the paths. `report.json` is optional; without it,
-shared-UID packages cannot be detected and `SUMMARY.md` has no per-app
-evidence.
+`--out <dir>` to change the paths. `report.json` is optional.
 
 No `blanc.yaml` is needed to start. When an app breaks:
 
@@ -161,8 +153,7 @@ The format is detected from the file. Checks:
   fake-ip; for sing-box, a `sniff` rule before BLANC;
 - process matching and TUN, only when some rule names an app.
 
-It exits non-zero on a `fail`. It cannot expand rule providers or GEOSITE
-data, and a client app can override DNS and sniffer settings outside the file.
+It exits non-zero on a `fail`.
 
 ## Policy
 
@@ -178,25 +169,15 @@ apps:
 ```
 
 App entries beat global entries, global entries beat NOIR, and the longest
-matching domain wins within a tier. Packages that share a UID cannot be told
-apart by any proxy, so their `apps:` entries are ignored with a warning. See
-[docs/policy.md](docs/policy.md) and [examples/blanc.yaml](examples/blanc.yaml).
+matching domain wins within a tier. Entries for packages that share a UID are
+ignored with a warning. See [docs/policy.md](docs/policy.md) and
+[examples/blanc.yaml](examples/blanc.yaml).
 
 ## Notes
 
 - BLANC never phones home.
 - NOIR reports contain package names and domains. Review before sharing.
-- NOIR exports only hosts of upload-looking URLs, so most endpoints in
-  `report.json` are outside the export; that is expected.
-- Rescan when apps change; rules are static evidence applied to a static report.
-- This is a compiler for NOIR, not a replacement for a trusted device.
+- Rescan and recompile when apps change.
 - Upstream: [Verlintas/NOIR](https://github.com/Verlintas/NOIR), MIT.
-
-## Why Go
-
-The proxies are Go and a single static binary is enough. The rule files are
-deterministic; the manifest records a timestamp and input hashes. There is
-deliberately no TUI, daemon or server: the rule file, the doctor and `explain`
-are the interface.
 
 <p align="center"><sub>MIT · made for people who prefer a quiet phone</sub></p>
