@@ -1,6 +1,7 @@
 package render
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/Tchirek/blanc/internal/engine"
@@ -51,12 +52,17 @@ func SingboxRuleSet(rules []engine.Rule) SourceRuleSet {
 	set := SourceRuleSet{Version: 3, Rules: []Headless{}}
 	global := make([]string, 0)
 	scoped := make(map[string][]string)
-	logical := make([]Headless, 0)
+	groups := make(map[string][]engine.Rule)
+	order := make([]string, 0)
 
 	for _, rule := range rules {
 		switch {
 		case len(rule.Except) > 0:
-			logical = append(logical, singboxLogical(rule))
+			key := fmt.Sprint(rule.Package, rule.Except)
+			if _, seen := groups[key]; !seen {
+				order = append(order, key)
+			}
+			groups[key] = append(groups[key], rule)
 		case rule.Package == "":
 			global = append(global, rule.Domain)
 		default:
@@ -76,15 +82,22 @@ func SingboxRuleSet(rules []engine.Rule) SourceRuleSet {
 		rule.PackageName = []string{pkg}
 		set.Rules = append(set.Rules, rule)
 	}
-	set.Rules = append(set.Rules, logical...)
+	for _, key := range order {
+		set.Rules = append(set.Rules, singboxLogical(groups[key]))
+	}
 	return set
 }
 
 // 否の札
 // 並べて閉ざす
 // 一つ門
-func singboxLogical(rule engine.Rule) Headless {
-	subs := []Headless{domainRule([]string{rule.Domain})}
+func singboxLogical(group []engine.Rule) Headless {
+	rule := group[0]
+	domains := make([]string, 0, len(group))
+	for _, member := range group {
+		domains = append(domains, member.Domain)
+	}
+	subs := []Headless{domainRule(domains)}
 	if rule.Package != "" {
 		subs = append(subs, Headless{PackageName: []string{rule.Package}})
 	}

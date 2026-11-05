@@ -170,6 +170,14 @@ func TestExceptionsRender(t *testing.T) {
 			t.Fatalf("allowed host rendered: %s", rule)
 		}
 	}
+	var set SourceRuleSet
+	if err := json.Unmarshal(files[FileSingbox], &set); err != nil {
+		t.Fatal(err)
+	}
+	if len(set.Rules) != 3 || set.Rules[0].PackageName[0] != "com.nightmarket.shop" ||
+		strings.Join(set.Rules[1].Rules[0].Domain, ",") != "alog.umeng.com,analytics.vendorwatch.cn,api.nightmarket.cn,collect.adsight.io" {
+		t.Fatalf("rules sharing exceptions must share one logical rule: %s", files[FileSingbox])
+	}
 	if !strings.Contains(string(files[FileSummary]), "find-process-mode") {
 		t.Fatal("app-scoped rules need the process-matching hint")
 	}
