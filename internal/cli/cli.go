@@ -35,6 +35,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return 0
 	case "init":
 		return runInit(args[1:], stdout, stderr)
+	case "scan":
+		return runScan(args[1:], stdout, stderr)
 	case "compile":
 		return runCompile(args[1:], stdout, stderr)
 	case "explain":
@@ -55,6 +57,7 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "冴返る")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "usage:")
+	fmt.Fprintln(w, "  blanc scan    [--serial <id>] [--policy blanc.yaml] [--out blanc-out] [-- <noir scan args>]")
 	fmt.Fprintln(w, "  blanc compile [--noir noir-out] [--policy blanc.yaml] [--out blanc-out]")
 	fmt.Fprintln(w, "  blanc doctor  --config <mihomo config.yaml | sing-box config.json> [--out blanc-out]")
 	fmt.Fprintln(w, "  blanc explain <host|url> [--app <package>] [--noir noir-out] [--policy blanc.yaml]")
@@ -235,6 +238,13 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "blanc compile: --out cannot be empty")
 		return 2
 	}
+	return compileAndWrite(in, *outPath, stdout, stderr)
+}
+
+// 帳を読み
+// 網を編みては
+// 紙に置く
+func compileAndWrite(in inputFlags, outPath string, stdout, stderr io.Writer) int {
 	loaded, err := loadInputs(in)
 	if err != nil {
 		fmt.Fprintf(stderr, "blanc compile: %v\n", err)
@@ -249,18 +259,18 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 		Version:     version.Version,
 		Commit:      version.Commit,
 		GeneratedAt: time.Now().UTC(),
-		RuleSetPath: singboxRuleSetPath(*outPath),
+		RuleSetPath: singboxRuleSetPath(outPath),
 	})
 	if err != nil {
 		fmt.Fprintf(stderr, "blanc compile: %v\n", err)
 		return 1
 	}
-	if err := writeFiles(*outPath, files); err != nil {
+	if err := writeFiles(outPath, files); err != nil {
 		fmt.Fprintf(stderr, "blanc compile: %v\n", err)
 		return 1
 	}
 
-	printSummary(stdout, plan, loaded, *outPath)
+	printSummary(stdout, plan, loaded, outPath)
 	for _, note := range plan.Notes {
 		if note.Level == engine.LevelWarn {
 			fmt.Fprintf(stderr, "warning: %s: %s\n", note.Subject, note.Message)
