@@ -218,3 +218,106 @@ func TestMihomoErrors(t *testing.T) {
 		t.Fatalf("empty rules = %+v", got)
 	}
 }
+
+const ruleSet = `{"version": 3, "rules": [{"domain": ["alog.umeng.com"], "domain_suffix": [".alog.umeng.com"]}]}`
+const scopedRuleSet = `{"version": 3, "rules": [{"package_name": ["com.a.b"], "domain": ["x.cn"], "domain_suffix": [".x.cn"]}]}`
+
+func runSingbox(t *testing.T, set, config string) *Report {
+	t.Helper()
+	dir := t.TempDir()
+	out := filepath.Join(dir, "blanc-out")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(t, out, "singbox.json", set)
+	configPath := write(t, dir, "config.json", config)
+	report, err := Run(configPath, "", out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Kind != KindSingbox || !strings.HasSuffix(report.RulesPath, "singbox.json") {
+		t.Fatalf("report = %+v", report)
+	}
+	return report
+}
+
+// 嗅ぎ取りて
+// のちに閉ざせば
+// 名も分かる
+func TestSingboxHealthy(t *testing.T) {
+	config := `{
+  // comments are fine
+  "inbounds": [{"type": "tun", "tag": "tun-in"}],
+  "route": {
+    "rule_set": [{"tag": "blanc", "type": "local", "format": "source", "path": "/sdcard/blanc/singbox.json"}],
+    "rules": [
+      {"action": "sniff"},
+      {"protocol": "dns", "action": "hijack-dns"},
+      {"ip_is_private": true, "outbound": "direct"},
+      {"rule_set": ["blanc"], "action": "reject"},
+      {"rule_set": "geosite-cn", "outbound": "direct"}
+    ]
+  }
+}`
+	report := runSingbox(t, scopedRuleSet, config)
+	if report.Fails() != 0 || report.Warnings() != 0 {
+		t.Fatalf("checks = %+v", report.Checks)
+	}
+	if got := find(t, report, "tun"); got.Status != StatusOK {
+		t.Fatalf("tun = %+v", got)
+	}
+}
+
+func TestSingboxProblems(t *testing.T) {
+	cases := []struct {
+		name   string
+		rules  string
+		extra  string
+		check  string
+		status Status
+		want   string
+	}{
+		{"reject before sniff", `{"rule_set": "blanc", "action": "reject"}, {"action": "sniff"}`, "", "domain names", StatusFail, "comes after BLANC"},
+		{"no sniff", `{"rule_set": "blanc", "action": "reject"}`, "", "domain names", StatusFail, "bare IPs"},
+		{"legacy inbound sniff", `{"rule_set": "blanc", "action": "reject"}`, `"inbounds": [{"type": "tun", "sniff": true}],`, "domain names", StatusWarn, "deprecated"},
+		{"fakeip only", `{"rule_set": "blanc", "action": "reject"}`, `"dns": {"servers": [{"type": "fakeip", "tag": "fake"}]},`, "domain names", StatusWarn, "HTTPDNS"},
+		{"legacy outbound", `{"action": "sniff"}, {"rule_set": "blanc", "outbound": "block"}`, "", "BLANC rule", StatusFail, "action"},
+		{"missing reject", `{"action": "sniff"}`, "", "BLANC rule", StatusFail, "no route rule"},
+		{"catch-all first", `{"action": "sniff"}, {"inbound": "tun-in", "outbound": "direct"}, {"rule_set": "blanc", "action": "reject"}`, "", "rule order", StatusFail, "inbound"},
+		{"domain rule first", `{"action": "sniff"}, {"domain_suffix": ["cn"], "outbound": "direct"}, {"rule_set": "blanc", "action": "reject"}`, "", "rule order", StatusWarn, "domain_suffix"},
+		{"logical first", `{"action": "sniff"}, {"type": "logical", "mode": "or", "rules": [], "outbound": "direct"}, {"rule_set": "blanc", "action": "reject"}`, "", "rule order", StatusWarn, "logical"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			config := `{` + tc.extra + `"route": {"rule_set": [{"tag": "blanc", "type": "local", "path": "./blanc-out/singbox.json"}], "rules": [` + tc.rules + `]}}`
+			report := runSingbox(t, ruleSet, config)
+			got := find(t, report, tc.check)
+			if got.Status != tc.status || !strings.Contains(got.Message, tc.want) {
+				t.Fatalf("%s = %+v", tc.check, got)
+			}
+		})
+	}
+	report := runSingbox(t, ruleSet, `{"route": {"rules": []}}`)
+	if got := find(t, report, "rule set"); got.Status != StatusFail {
+		t.Fatalf("rule set = %+v", got)
+	}
+	report = runSingbox(t, scopedRuleSet, `{"route": {"rule_set": [{"tag": "blanc", "path": "singbox.json"}], "rules": [{"action": "sniff"}, {"rule_set": "blanc", "action": "reject"}]}}`)
+	if got := find(t, report, "tun"); got.Status != StatusWarn {
+		t.Fatalf("tun = %+v", got)
+	}
+}
+
+func TestDetect(t *testing.T) {
+	if Detect([]byte("rules:\n  - MATCH,DIRECT\n")) != KindMihomo {
+		t.Fatal("yaml detected as sing-box")
+	}
+	if Detect([]byte("// c\n{\"route\": {}}")) != KindSingbox {
+		t.Fatal("json not detected")
+	}
+	if Detect([]byte(`{"rules": ["MATCH,DIRECT"]}`)) != KindMihomo {
+		t.Fatal("flow-style yaml detected as sing-box")
+	}
+	if got := string(stripJSONComments([]byte(`{"a": "http://x/*y*/" /* c */}`))); got != `{"a": "http://x/*y*/" }` {
+		t.Fatalf("strip = %q", got)
+	}
+}
