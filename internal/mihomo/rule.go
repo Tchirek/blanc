@@ -148,7 +148,7 @@ func (r *Rule) Match(md Metadata) (matched bool, known bool) {
 	case "DOMAIN-KEYWORD":
 		return strings.Contains(host, payload), true
 	case "PROCESS-NAME":
-		return md.Process != "" && md.Process == r.Payload, true
+		return md.Process != "" && strings.EqualFold(md.Process, r.Payload), true
 	case "AND":
 		for _, sub := range r.Subs {
 			ok, known := sub.Match(md)

@@ -178,7 +178,8 @@ func TestMihomoVisibility(t *testing.T) {
 		want   string
 	}{
 		{goodSniffer, StatusOK, "parse-pure-ip"},
-		{"sniffer:\n  enable: true\n  sniff:\n    TLS: {ports: [443]}\n    QUIC: {ports: [443]}\n", StatusWarn, "parse-pure-ip is off"},
+		{"sniffer:\n  enable: true\n  parse-pure-ip: false\n  sniff:\n    TLS: {ports: [443]}\n    QUIC: {ports: [443]}\n", StatusWarn, "parse-pure-ip is off"},
+		{"sniffer:\n  enable: true\n  sniff:\n    TLS: {ports: [443]}\n    QUIC: {ports: [443]}\n", StatusOK, "sniffer on"},
 		{"sniffer:\n  enable: true\n  parse-pure-ip: true\n  sniff:\n    TLS: {ports: [443]}\n", StatusWarn, "QUIC"},
 		{"sniffer:\n  enable: true\n  parse-pure-ip: true\n  sniff:\n    HTTP: {ports: [80]}\n", StatusWarn, "TLS"},
 		{"sniffer:\n  enable: true\n", StatusWarn, "no protocols"},

@@ -170,7 +170,11 @@ func loadMihomoConfig(raw []byte) (*mihomoConfig, error) {
 func readSniffer(node *yaml.Node, line int) snifferConfig {
 	s := snifferConfig{Found: true, Line: line, Protocols: map[string]bool{}}
 	s.Enable = boolField(node, "enable")
-	s.ParsePureIP = boolField(node, "parse-pure-ip")
+	s.ParsePureIP = true
+	if raw := field(node, "parse-pure-ip"); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		s.ParsePureIP = err != nil || parsed
+	}
 	if sniff := child(node, "sniff"); sniff != nil && sniff.Kind == yaml.MappingNode {
 		for i := 0; i < len(sniff.Content); i += 2 {
 			s.Protocols[strings.ToUpper(sniff.Content[i].Value)] = true

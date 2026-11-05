@@ -18,6 +18,7 @@ func TestParseAndMatch(t *testing.T) {
 		{"DOMAIN-KEYWORD,umeng,DIRECT", Metadata{Host: "x.umengcloud.com"}, true, true},
 		{"AND,((PROCESS-NAME,com.a.b),(DOMAIN-SUFFIX,x.cn)),REJECT", Metadata{Host: "x.cn", Process: "com.a.b"}, true, true},
 		{"AND,((PROCESS-NAME,com.a.b),(DOMAIN-SUFFIX,x.cn)),REJECT", Metadata{Host: "x.cn", Process: "com.c.d"}, false, true},
+		{"PROCESS-NAME,Firefox.exe,PROXY", Metadata{Host: "x.cn", Process: "firefox.exe"}, true, true},
 		{"AND,((DOMAIN-SUFFIX,x.cn),(NOT,((PROCESS-NAME,com.a.b)))),REJECT", Metadata{Host: "x.cn"}, true, true},
 		{"AND,((DOMAIN-SUFFIX,x.cn),(NOT,((PROCESS-NAME,com.a.b)))),REJECT", Metadata{Host: "x.cn", Process: "com.a.b"}, false, true},
 		{"AND,((DOMAIN-SUFFIX,x.cn),(NOT,((AND,((PROCESS-NAME,p.q),(DOMAIN-SUFFIX,y.x.cn)))))),REJECT", Metadata{Host: "z.y.x.cn", Process: "p.q"}, false, true},
