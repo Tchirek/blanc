@@ -46,7 +46,7 @@ func TestHelp(t *testing.T) {
 	if code != 0 || stderr != "" {
 		t.Fatalf("code=%d stderr=%q", code, stderr)
 	}
-	for _, want := range []string{"anti-telescreen", "blanc compile", "blanc doctor", "every app"} {
+	for _, want := range []string{"anti-telescreen", "blanc compile", "blanc doctor", "blanc explain", "every app"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("help missing %q:\n%s", want, stdout)
 		}
@@ -147,6 +147,57 @@ func TestCompileErrors(t *testing.T) {
 	shared := write(t, filepath.Join(dir, "shared.yaml"), "version: 2\napps:\n  com.vendorwatch.telemetry: allow\n")
 	code, _, stderr := run("compile", "--noir", testdata(t), "--policy", shared, "--out", filepath.Join(dir, "out2"))
 	if code != 0 || !strings.Contains(stderr, "warning: apps.com.vendorwatch.telemetry") {
+		t.Fatalf("code=%d stderr=%s", code, stderr)
+	}
+}
+
+// 何故閉ざす
+// 問いに答えと
+// 直し方
+func TestExplain(t *testing.T) {
+	data := testdata(t)
+	policy := write(t, filepath.Join(t.TempDir(), "blanc.yaml"), "version: 2\nblock: [api.nightmarket.cn]\napps:\n  jp.quietreader.app:\n    allow: [metrics.quietreader.jp]\n")
+
+	code, stdout, stderr := run("explain", "https://sub.alog.umeng.com/report?x=1", "--noir", data, "--policy", policy)
+	if code != 0 {
+		t.Fatalf("code=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{"host      sub.alog.umeng.com", "verdict   block", "NOIR tracker alog.umeng.com", "rule      DOMAIN-SUFFIX,alog.umeng.com,REJECT", "allow: [alog.umeng.com]"} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	_, stdout, _ = run("explain", "--app", "jp.quietreader.app", "metrics.quietreader.jp", "--noir", data, "--policy", policy)
+	for _, want := range []string{"verdict   allow", "app allow metrics.quietreader.jp", "seen in   com.nightmarket.shop, jp.quietreader.app", "remove metrics.quietreader.jp from apps.jp.quietreader.app.allow"} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("stdout missing %q:\n%s", want, stdout)
+		}
+	}
+	if strings.Contains(stdout, "rule      ") {
+		t.Fatalf("allowed host must not list a rule:\n%s", stdout)
+	}
+
+	_, stdout, _ = run("explain", "api.nightmarket.cn", "--noir", data, "--policy", policy)
+	if !strings.Contains(stdout, "global block api.nightmarket.cn") || !strings.Contains(stdout, "remove api.nightmarket.cn from block:") {
+		t.Fatalf("stdout:\n%s", stdout)
+	}
+	_, stdout, _ = run("explain", "login.nightpass.cn", "--noir", data, "--policy", policy)
+	if !strings.Contains(stdout, "NOIR functional") || !strings.Contains(stdout, "careful") {
+		t.Fatalf("stdout:\n%s", stdout)
+	}
+	_, stdout, _ = run("explain", "analytics.vendorwatch.cn", "--app", "com.vendorwatch.telemetry", "--noir", data, "--policy", write(t, filepath.Join(t.TempDir(), "p.yaml"), "version: 2\napps:\n  com.vendorwatch.telemetry: allow\n"))
+	if !strings.Contains(stdout, "verdict   block") || !strings.Contains(stdout, "is ignored: shares UID 1000") {
+		t.Fatalf("stdout:\n%s", stdout)
+	}
+
+	if code, _, stderr := run("explain"); code != 2 || !strings.Contains(stderr, "usage") {
+		t.Fatalf("code=%d stderr=%s", code, stderr)
+	}
+	if code, _, stderr := run("explain", "not a host", "--noir", data); code != 2 || !strings.Contains(stderr, "not a hostname") {
+		t.Fatalf("code=%d stderr=%s", code, stderr)
+	}
+	if code, _, stderr := run("explain", "a.cn", "--app", "bad..pkg", "--noir", data); code != 2 || !strings.Contains(stderr, "invalid package") {
 		t.Fatalf("code=%d stderr=%s", code, stderr)
 	}
 }

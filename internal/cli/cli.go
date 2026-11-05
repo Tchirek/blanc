@@ -37,6 +37,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return runInit(args[1:], stdout, stderr)
 	case "compile":
 		return runCompile(args[1:], stdout, stderr)
+	case "explain":
+		return runExplain(args[1:], stdout, stderr)
 	case "doctor":
 		return runDoctor(args[1:], stdout, stderr)
 	default:
@@ -55,12 +57,13 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "usage:")
 	fmt.Fprintln(w, "  blanc compile [--noir noir-out] [--policy blanc.yaml] [--out blanc-out]")
 	fmt.Fprintln(w, "  blanc doctor  --config <mihomo config.yaml | sing-box config.json> [--out blanc-out]")
+	fmt.Fprintln(w, "  blanc explain <host|url> [--app <package>] [--noir noir-out] [--policy blanc.yaml]")
 	fmt.Fprintln(w, "  blanc init    [--out blanc.yaml] [--force]")
 	fmt.Fprintln(w, "  blanc version")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "BLANC turns a NOIR scan into Mihomo and sing-box reject rules. Every NOIR")
 	fmt.Fprintln(w, "tracker is rejected for every app; blanc.yaml adds global or per-app")
-	fmt.Fprintln(w, "exceptions and extra blocks.")
+	fmt.Fprintln(w, "exceptions and extra blocks. If an app breaks, run blanc explain.")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "A blocked URL is not privacy. NOIR cannot see vendor-preinstalled services,")
 	fmt.Fprintln(w, "lower-level frameworks or system processes.")
@@ -305,6 +308,135 @@ func outputNames(outPath string) []string {
 		render.FileSingboxRoute,
 		render.FileSummary,
 		render.FileManifest,
+	}
+}
+
+// 何故閉ざす
+// 問えば札の名
+// 指し示す
+func runExplain(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("explain", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	in := addInputFlags(fs)
+	app := fs.String("app", "", "Android package name (default: an app with no blanc.yaml entry)")
+	fs.Usage = func() {
+		fmt.Fprintln(stderr, "usage: blanc explain <host|url> [--app <package>] [--noir noir-out] [--policy blanc.yaml]")
+		fs.PrintDefaults()
+	}
+	positional, err := parseInterleaved(fs, args)
+	if err != nil {
+		if err == flag.ErrHelp {
+			return 0
+		}
+		return 2
+	}
+	if len(positional) != 1 {
+		fs.Usage()
+		return 2
+	}
+	ep, err := audit.ParseEndpoint(positional[0])
+	if err != nil {
+		fmt.Fprintf(stderr, "blanc explain: %q is not a hostname or URL\n", positional[0])
+		return 2
+	}
+	if *app != "" && !audit.ValidPackage(*app) {
+		fmt.Fprintf(stderr, "blanc explain: invalid package %q\n", *app)
+		return 2
+	}
+	loaded, err := loadInputs(in)
+	if err != nil {
+		fmt.Fprintf(stderr, "blanc explain: %v\n", err)
+		return 1
+	}
+	plan, err := engine.Compile(loaded.report, loaded.domains, loaded.policy)
+	if err != nil {
+		fmt.Fprintf(stderr, "blanc explain: %v\n", err)
+		return 1
+	}
+
+	host := ep.Host
+	decision := plan.Explain(*app, host)
+	who := "any app without a blanc.yaml entry"
+	if *app != "" {
+		who = *app
+	}
+	fmt.Fprintf(stdout, "host      %s\n", host)
+	fmt.Fprintf(stdout, "app       %s\n", who)
+	fmt.Fprintf(stdout, "class     %s\n", decision.Class)
+	fmt.Fprintf(stdout, "verdict   %s\n", decision.Verdict)
+	fmt.Fprintf(stdout, "because   %s\n", decision.Reason)
+	if reason, skipped := plan.Skipped[*app]; skipped {
+		fmt.Fprintf(stdout, "note      apps.%s is ignored: %s\n", *app, reason)
+	}
+	for _, rule := range plan.Rules {
+		if rule.Matches(*app, host) {
+			fmt.Fprintf(stdout, "rule      %s\n", render.MihomoRule(rule))
+		}
+	}
+	if plan.HasReport {
+		if users := referencedBy(plan, host); len(users) > 0 {
+			fmt.Fprintf(stdout, "seen in   %s\n", strings.Join(users, ", "))
+		}
+	}
+	fmt.Fprintln(stdout)
+	printFix(stdout, *app, host, decision)
+	return 0
+}
+
+func referencedBy(plan *engine.Plan, host string) []string {
+	set := make(map[string]struct{})
+	for _, finding := range plan.Findings {
+		if audit.Covers(host, finding.Domain) || audit.Covers(finding.Domain, host) {
+			set[finding.Package] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(set))
+	for pkg := range set {
+		out = append(out, pkg)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// 直す道
+// 書き足す行を
+// 添えて出す
+func printFix(w io.Writer, app, host string, decision engine.Decision) {
+	target := host
+	if decision.Match != "" && decision.Tier != engine.TierApp {
+		target = decision.Match
+	}
+	pkg := app
+	if pkg == "" {
+		pkg = "<package>"
+	}
+	if decision.Blocked() {
+		fmt.Fprintln(w, "to unblock it, edit blanc.yaml and run blanc compile:")
+		switch decision.Tier {
+		case engine.TierApp:
+			fmt.Fprintf(w, "  remove %s from apps.%s.block\n", decision.Match, pkg)
+		case engine.TierGlobal:
+			fmt.Fprintf(w, "  for this app only:\n    apps:\n      %s:\n        allow: [%s]\n", pkg, target)
+			fmt.Fprintf(w, "  for every app: remove %s from block:\n", decision.Match)
+		default:
+			fmt.Fprintf(w, "  for this app only:\n    apps:\n      %s:\n        allow: [%s]\n", pkg, target)
+			fmt.Fprintf(w, "  for every app:\n    allow: [%s]\n", target)
+		}
+		return
+	}
+	fmt.Fprintln(w, "to block it, edit blanc.yaml and run blanc compile:")
+	switch {
+	case decision.Tier == engine.TierApp && decision.Match != "":
+		fmt.Fprintf(w, "  remove %s from apps.%s.allow\n", decision.Match, pkg)
+	case decision.Tier == engine.TierGlobal && decision.Match == host:
+		fmt.Fprintf(w, "  for this app only:\n    apps:\n      %s:\n        block: [%s]\n", pkg, host)
+		fmt.Fprintf(w, "  for every app: remove %s from allow:\n", host)
+	default:
+		fmt.Fprintf(w, "  for this app only:\n    apps:\n      %s:\n        block: [%s]\n", pkg, host)
+		fmt.Fprintf(w, "  for every app:\n    block: [%s]\n", host)
+	}
+	if decision.Class == audit.ClassFunctional {
+		fmt.Fprintln(w, "  careful: NOIR marks this host functional (push/login/update/payment)")
 	}
 }
 
