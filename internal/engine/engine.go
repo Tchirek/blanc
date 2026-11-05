@@ -173,7 +173,7 @@ func packageNotes(report *audit.Report, pol *policy.Policy, skipped map[string]s
 		if !app.SharesUID() {
 			continue
 		}
-		reason := fmt.Sprintf("shares UID %s (%s) with other packages; Android attributes traffic per UID, so proxies cannot tell this package apart", uidLabel(app.UID), app.SharedUID)
+		reason := fmt.Sprintf("shares UID %s (%s) with other packages; Android attributes traffic per UID, so proxies cannot tell this package apart (Mihomo sees one name for the UID, sing-box matches every package on it)", uidLabel(app.UID), app.SharedUID)
 		skipped[pkg] = reason
 		peers := len(shared[app.SharedUID]) - 1
 		message := reason + "; entry ignored, use a global allow/block instead"
