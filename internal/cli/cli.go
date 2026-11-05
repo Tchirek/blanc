@@ -180,10 +180,11 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 func runDoctor(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	configPath := fs.String("config", "", "Mihomo config.yaml")
-	rulesPath := fs.String("rules", filepath.Join("blanc-out", render.FileMihomo), "generated BLANC rules")
+	configPath := fs.String("config", "", "Mihomo config.yaml or sing-box config.json")
+	rulesPath := fs.String("rules", "", "generated rules (default: <out>/mihomo.rules.yaml or <out>/singbox.json)")
+	outPath := fs.String("out", "blanc-out", "blanc compile output directory")
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: blanc doctor --config <mihomo.yaml> [--rules <mihomo.rules.yaml>]")
+		fmt.Fprintln(stderr, "usage: blanc doctor --config <config.yaml|config.json> [--out blanc-out] [--rules <file>]")
 	}
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -195,13 +196,13 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 		fs.Usage()
 		return 2
 	}
-	report, err := doctor.Run(*configPath, *rulesPath)
+	report, err := doctor.Run(*configPath, *rulesPath, *outPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "blanc doctor: %v\n", err)
 		return 1
 	}
 
-	fmt.Fprintln(stdout, "BLANC doctor")
+	fmt.Fprintf(stdout, "BLANC doctor (%s)\n", report.Kind)
 	fmt.Fprintf(stdout, "config  %s\n", report.ConfigPath)
 	fmt.Fprintf(stdout, "rules   %s\n", report.RulesPath)
 	for _, check := range report.Checks {

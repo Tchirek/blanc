@@ -7,219 +7,214 @@ import (
 	"testing"
 )
 
-var testRules = []string{
-	"AND,((PROCESS-NAME,com.a),(DOMAIN-SUFFIX,tracker.a)),REJECT",
-	"AND,((PROCESS-NAME,com.b),(DOMAIN-SUFFIX,tracker.b)),REJECT",
-}
-
-// 門番
-// 名を確かめて
-// 通しけり
-func TestRunGoodConfig(t *testing.T) {
-	config := `find-process-mode: always
-tun:
-  enable: true
-rules:
-  - AND,((PROCESS-NAME,com.a),(DOMAIN-SUFFIX,tracker.a)),REJECT
-  - AND,((PROCESS-NAME,com.b),(DOMAIN-SUFFIX,tracker.b)),REJECT
-  - MATCH,DIRECT
+const globalRules = `# 電波絶ち
+- DOMAIN-SUFFIX,alog.umeng.com,REJECT
+- AND,((DOMAIN-SUFFIX,metrics.quietreader.jp),(NOT,((PROCESS-NAME,jp.quietreader.app)))),REJECT
 `
-	report := runTest(t, config)
-	if report.Fails() != 0 || report.Warnings() != 0 {
-		t.Fatalf("checks = %+v", report.Checks)
-	}
-	if !hasCheck(report, StatusOK, "2/2 BLANC rules") {
-		t.Fatalf("checks = %+v", report.Checks)
-	}
-	if !hasCheck(report, StatusOK, "no obvious shadowing") {
-		t.Fatalf("checks = %+v", report.Checks)
-	}
-}
 
-func TestRunNormalizesWhitespace(t *testing.T) {
-	config := `find-process-mode: always
-tun:
+const scopedRules = globalRules + "- AND,((DOMAIN-SUFFIX,cdn.nightmarket.cn),(PROCESS-NAME,com.nightmarket.shop)),REJECT\n"
+
+const goodSniffer = `sniffer:
   enable: true
-rules:
-  - AND, ((PROCESS-NAME,com.a),(DOMAIN-SUFFIX,tracker.a)), REJECT
-  - AND,((PROCESS-NAME,com.b), (DOMAIN-SUFFIX,tracker.b)),REJECT
-  - MATCH,DIRECT
+  parse-pure-ip: true
+  sniff:
+    TLS: {ports: [443]}
+    HTTP: {ports: [80]}
+    QUIC: {ports: [443]}
 `
-	report := runTest(t, config)
-	if report.Fails() != 0 || report.Warnings() != 0 {
-		t.Fatalf("checks = %+v", report.Checks)
-	}
-	if !hasCheck(report, StatusOK, "2/2 BLANC rules") {
-		t.Fatalf("checks = %+v", report.Checks)
-	}
-}
 
-func TestRunNamesMissingRules(t *testing.T) {
-	config := `find-process-mode: always
-tun:
-  enable: true
-rules:
-  - AND,((PROCESS-NAME,com.a),(DOMAIN-SUFFIX,tracker.a)),REJECT
-  - MATCH,DIRECT
-`
-	report := runTest(t, config)
-	if !hasCheck(report, StatusFail, "only 1/2") || !hasCheck(report, StatusFail, "com.b") {
-		t.Fatalf("checks = %+v", report.Checks)
-	}
-}
-
-func TestOrderCheckWithoutPresence(t *testing.T) {
-	config := `find-process-mode: always
-tun:
-  enable: true
-rules:
-  - GEOSITE,cn,DIRECT
-  - MATCH,DIRECT
-`
-	report := runTest(t, config)
-	if !hasCheck(report, StatusFail, "BLANC rules not found") {
-		t.Fatalf("checks = %+v", report.Checks)
-	}
-	if !hasCheck(report, StatusFail, "not in the config yet") || !hasCheck(report, StatusFail, "GEOSITE,cn") {
-		t.Fatalf("order check skipped: %+v", report.Checks)
-	}
-}
-
-func TestRunDetectsShadowing(t *testing.T) {
-	cases := []struct {
-		name   string
-		before string
-		want   string
-	}{
-		{"matcher", "MATCH,DIRECT", "MATCH"},
-		{"geosite cn", "GEOSITE,cn,DIRECT", "GEOSITE,cn"},
-		{"geoip cn", "GEOIP,CN,DIRECT", "GEOIP,CN"},
-		{"tld suffix", "DOMAIN-SUFFIX,cn,DIRECT", "TLD-wide"},
-		{"domain suffix", "DOMAIN-SUFFIX,tracker.a,DIRECT", "shadows a BLANC domain"},
-		{"domain keyword", "DOMAIN-KEYWORD,tracker,DIRECT", "shadows a BLANC domain"},
-		{"process name", "PROCESS-NAME,com.a,DIRECT", "matches a BLANC app"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			config := "find-process-mode: always\ntun:\n  enable: true\nrules:\n  - " + tc.before + "\n  - " + testRules[0] + "\n  - " + testRules[1] + "\n"
-			report := runTest(t, config)
-			if report.Fails() == 0 || !hasCheck(report, StatusFail, tc.want) {
-				t.Fatalf("checks = %+v", report.Checks)
-			}
-		})
-	}
-}
-
-func TestRunWarnsOnOpaqueRules(t *testing.T) {
-	config := `find-process-mode: always
-tun:
-  enable: true
-rules:
-  - RULE-SET,trackers,DIRECT
-  - AND,((NETWORK,UDP)),DIRECT
-  - AND,((PROCESS-NAME,com.a),(DOMAIN-SUFFIX,tracker.a)),REJECT
-  - AND,((PROCESS-NAME,com.b),(DOMAIN-SUFFIX,tracker.b)),REJECT
-`
-	report := runTest(t, config)
-	if report.Fails() != 0 || report.Warnings() < 2 {
-		t.Fatalf("checks = %+v", report.Checks)
-	}
-}
-
-func TestRunMissingRules(t *testing.T) {
-	config := `find-process-mode: always
-tun:
-  enable: true
-rules:
-  - MATCH,DIRECT
-`
-	report := runTest(t, config)
-	if report.Fails() == 0 || !hasCheck(report, StatusFail, "not found") {
-		t.Fatalf("checks = %+v", report.Checks)
-	}
-}
-
-func TestRunEmptyRulesFile(t *testing.T) {
-	dir := t.TempDir()
-	rulesPath := filepath.Join(dir, "rules.yaml")
-	if err := os.WriteFile(rulesPath, []byte("# 電波絶ち\n# 紙の白さよ\n# 冴返る\n"), 0o600); err != nil {
+func write(t *testing.T, dir, name, content string) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	configPath := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(configPath, []byte("rules:\n  - MATCH,DIRECT\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	report, err := Run(configPath, rulesPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !hasCheck(report, StatusFail, "rules file is empty") {
-		t.Fatalf("checks = %+v", report.Checks)
-	}
+	return path
 }
 
-func TestProcessModeAndTun(t *testing.T) {
-	t.Run("process off", func(t *testing.T) {
-		report := runTest(t, "find-process-mode: off\ntun:\n  enable: true\nrules:\n  - "+testRules[0]+"\n  - "+testRules[1]+"\n")
-		if !hasCheck(report, StatusFail, "cannot match") {
-			t.Fatalf("checks = %+v", report.Checks)
-		}
-	})
-	t.Run("process strict", func(t *testing.T) {
-		report := runTest(t, "find-process-mode: strict\ntun:\n  enable: true\nrules:\n  - "+testRules[0]+"\n  - "+testRules[1]+"\n")
-		if report.Fails() != 0 || !hasCheck(report, StatusWarn, "prefer always") {
-			t.Fatalf("checks = %+v", report.Checks)
-		}
-	})
-	t.Run("process missing", func(t *testing.T) {
-		report := runTest(t, "tun:\n  enable: true\nrules:\n  - "+testRules[0]+"\n  - "+testRules[1]+"\n")
-		if !hasCheck(report, StatusFail, "is off") {
-			t.Fatalf("checks = %+v", report.Checks)
-		}
-	})
-	t.Run("tun false", func(t *testing.T) {
-		report := runTest(t, "find-process-mode: always\ntun:\n  enable: false\nrules:\n  - "+testRules[0]+"\n  - "+testRules[1]+"\n")
-		if !hasCheck(report, StatusFail, "tun.enable is false") {
-			t.Fatalf("checks = %+v", report.Checks)
-		}
-	})
-	t.Run("tun missing", func(t *testing.T) {
-		report := runTest(t, "find-process-mode: always\nrules:\n  - "+testRules[0]+"\n  - "+testRules[1]+"\n")
-		if !hasCheck(report, StatusFail, "tun.enable is missing") {
-			t.Fatalf("checks = %+v", report.Checks)
-		}
-	})
-}
-
-func TestRunErrors(t *testing.T) {
-	if _, err := Run("missing.yaml", "missing.yaml"); err == nil {
-		t.Fatal("expected error")
-	}
-}
-
-func runTest(t *testing.T, config string) *Report {
+func runMihomo(t *testing.T, rules, config string) *Report {
 	t.Helper()
 	dir := t.TempDir()
-	rulesPath := filepath.Join(dir, "rules.yaml")
-	if err := os.WriteFile(rulesPath, []byte("- "+testRules[0]+"\n- "+testRules[1]+"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	configPath := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	report, err := Run(configPath, rulesPath)
+	rulesPath := write(t, dir, "mihomo.rules.yaml", rules)
+	configPath := write(t, dir, "config.yaml", config)
+	report, err := Run(configPath, rulesPath, "")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if report.Kind != KindMihomo {
+		t.Fatalf("kind = %s", report.Kind)
 	}
 	return report
 }
 
-func hasCheck(report *Report, status Status, message string) bool {
+func find(t *testing.T, report *Report, name string) Check {
+	t.Helper()
 	for _, check := range report.Checks {
-		if check.Status == status && strings.Contains(check.Message, message) {
-			return true
+		if check.Name == name {
+			return check
 		}
 	}
-	return false
+	t.Fatalf("no %q check in %+v", name, report.Checks)
+	return Check{}
+}
+
+func pasted(rules string) string {
+	out := ""
+	for _, line := range strings.Split(rules, "\n") {
+		if strings.HasPrefix(line, "- ") {
+			out += "  " + line + "\n"
+		}
+	}
+	return out
+}
+
+// 整いし
+// 門には何の
+// 咎もなし
+func TestMihomoHealthy(t *testing.T) {
+	config := goodSniffer + "tun:\n  enable: true\ndns:\n  enable: true\n  enhanced-mode: fake-ip\nrules:\n" + pasted(globalRules) + "  - GEOSITE,cn,DIRECT\n  - MATCH,PROXY\n"
+	report := runMihomo(t, globalRules, config)
+	if report.Fails() != 0 || report.Warnings() != 0 {
+		t.Fatalf("checks = %+v", report.Checks)
+	}
+	if got := find(t, report, "BLANC rules"); !strings.Contains(got.Message, "2/2") || got.Line == 0 {
+		t.Fatalf("presence = %+v", got)
+	}
+	if got := find(t, report, "process mode"); got.Status != StatusOK {
+		t.Fatalf("app exceptions need process lookup: %+v", got)
+	}
+}
+
+func TestMihomoProcessChecksOnlyWhenNeeded(t *testing.T) {
+	plain := "- DOMAIN-SUFFIX,alog.umeng.com,REJECT\n"
+	report := runMihomo(t, plain, goodSniffer+"find-process-mode: off\nrules:\n"+pasted(plain))
+	for _, check := range report.Checks {
+		if check.Name == "process mode" || check.Name == "tun" {
+			t.Fatalf("global-only rules do not need %s: %+v", check.Name, check)
+		}
+	}
+	report = runMihomo(t, scopedRules, goodSniffer+"find-process-mode: off\nrules:\n"+pasted(scopedRules))
+	if got := find(t, report, "process mode"); got.Status != StatusFail {
+		t.Fatalf("process = %+v", got)
+	}
+	if got := find(t, report, "tun"); got.Status != StatusWarn || !strings.Contains(got.Message, "VPN") {
+		t.Fatalf("tun = %+v", got)
+	}
+	report = runMihomo(t, scopedRules, goodSniffer+"tun:\n  enable: true\nrules:\n"+pasted(scopedRules))
+	if got := find(t, report, "process mode"); got.Status != StatusOK || !strings.Contains(got.Message, "strict") {
+		t.Fatalf("default process mode = %+v", got)
+	}
+}
+
+// 先の札
+// 奪う名をこそ
+// 名指しせり
+func TestMihomoShadowing(t *testing.T) {
+	cases := []struct {
+		rule   string
+		status Status
+		want   string
+	}{
+		{"DOMAIN-SUFFIX,umeng.com,DIRECT", StatusFail, "alog.umeng.com"},
+		{"DOMAIN-KEYWORD,quietreader,PROXY", StatusFail, "metrics.quietreader.jp"},
+		{"PROCESS-NAME,com.nightmarket.shop,DIRECT", StatusFail, "for com.nightmarket.shop"},
+		{"PROCESS-NAME,org.mozilla.firefox,PROXY", StatusFail, "for org.mozilla.firefox"},
+		{"AND,((DOMAIN-SUFFIX,umeng.com),(PROCESS-NAME,org.other)),DIRECT", StatusFail, "alog.umeng.com for org.other"},
+		{"GEOSITE,cn,DIRECT", StatusFail, "GEOSITE"},
+		{"GEOSITE,google,PROXY", StatusWarn, "GEOSITE"},
+		{"GEOIP,CN,DIRECT", StatusFail, "no-resolve"},
+		{"RULE-SET,private,DIRECT", StatusWarn, "offline"},
+		{"DST-PORT,443,PROXY", StatusWarn, "not domain-specific"},
+		{"MATCH,DIRECT", StatusFail, "takes 3"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.rule, func(t *testing.T) {
+			config := goodSniffer + "rules:\n  - " + tc.rule + "\n" + pasted(scopedRules)
+			report := runMihomo(t, scopedRules, config)
+			got := find(t, report, "rule order")
+			if got.Status != tc.status || !strings.Contains(got.Message, tc.want) || got.Line != 9 {
+				t.Fatalf("order = %+v", got)
+			}
+		})
+	}
+	harmless := []string{
+		"DOMAIN-SUFFIX,umeng.com,REJECT",
+		"DOMAIN-SUFFIX,google.com,PROXY",
+		"AND,((PROCESS-NAME,jp.quietreader.app),(DOMAIN-SUFFIX,metrics.quietreader.jp)),PROXY",
+		"GEOIP,CN,DIRECT,no-resolve",
+	}
+	for _, rule := range harmless {
+		config := goodSniffer + "rules:\n  - " + rule + "\n" + pasted(scopedRules)
+		report := runMihomo(t, scopedRules, config)
+		if got := find(t, report, "rule order"); got.Status != StatusOK {
+			t.Fatalf("%s: order = %+v", rule, got)
+		}
+	}
+}
+
+func TestMihomoSplitPaste(t *testing.T) {
+	lines := strings.Split(strings.TrimRight(pasted(scopedRules), "\n"), "\n")
+	config := goodSniffer + "rules:\n" + lines[0] + "\n  - MATCH,DIRECT\n" + strings.Join(lines[1:], "\n") + "\n"
+	report := runMihomo(t, scopedRules, config)
+	if got := find(t, report, "rule order"); got.Status != StatusFail || !strings.Contains(got.Message, "MATCH") {
+		t.Fatalf("BLANC rules after MATCH must fail: %+v", got)
+	}
+	missing := goodSniffer + "rules:\n" + lines[0] + "\n"
+	if got := find(t, runMihomo(t, scopedRules, missing), "BLANC rules"); got.Status != StatusFail || !strings.Contains(got.Message, "1/3") {
+		t.Fatalf("presence = %+v", got)
+	}
+	if got := find(t, runMihomo(t, scopedRules, goodSniffer+"rules: []\n"), "BLANC rules"); got.Status != StatusFail {
+		t.Fatalf("presence = %+v", got)
+	}
+}
+
+// 目を閉じた
+// 網の在り処を
+// 見咎める
+func TestMihomoVisibility(t *testing.T) {
+	cases := []struct {
+		config string
+		status Status
+		want   string
+	}{
+		{goodSniffer, StatusOK, "parse-pure-ip"},
+		{"sniffer:\n  enable: true\n  sniff:\n    TLS: {ports: [443]}\n    QUIC: {ports: [443]}\n", StatusWarn, "parse-pure-ip is off"},
+		{"sniffer:\n  enable: true\n  parse-pure-ip: true\n  sniff:\n    TLS: {ports: [443]}\n", StatusWarn, "QUIC"},
+		{"sniffer:\n  enable: true\n  parse-pure-ip: true\n  sniff:\n    HTTP: {ports: [80]}\n", StatusWarn, "TLS"},
+		{"sniffer:\n  enable: true\n", StatusWarn, "no protocols"},
+		{"sniffer:\n  enable: true\n  parse-pure-ip: true\n  sniffing: [tls, quic]\n", StatusOK, "sniffer on"},
+		{"dns:\n  enable: true\n  enhanced-mode: fake-ip\n", StatusWarn, "HTTPDNS"},
+		{"tun:\n  enable: true\n", StatusFail, "bare IPs"},
+		{"", StatusWarn, "HTTP/SOCKS"},
+	}
+	for _, tc := range cases {
+		report := runMihomo(t, globalRules, tc.config+"rules:\n"+pasted(globalRules))
+		got := find(t, report, "domain names")
+		if got.Status != tc.status || !strings.Contains(got.Message, tc.want) {
+			t.Fatalf("%q: visibility = %+v", tc.config, got)
+		}
+	}
+}
+
+func TestMihomoErrors(t *testing.T) {
+	dir := t.TempDir()
+	config := write(t, dir, "config.yaml", "rules: []\n")
+	if _, err := Run(config, filepath.Join(dir, "missing.yaml"), ""); err == nil || !strings.Contains(err.Error(), "blanc compile") {
+		t.Fatalf("err = %v", err)
+	}
+	bad := write(t, dir, "bad.yaml", "- GEOSITE,cn,DIRECT\n")
+	if _, err := Run(config, bad, ""); err == nil || !strings.Contains(err.Error(), "not a BLANC rule") {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := Run(filepath.Join(dir, "nope.yaml"), bad, ""); err == nil {
+		t.Fatal("missing config accepted")
+	}
+	empty := write(t, dir, "empty.yaml", "# nothing\n")
+	report, err := Run(config, empty, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := find(t, report, "BLANC rules"); got.Status != StatusWarn {
+		t.Fatalf("empty rules = %+v", got)
+	}
 }

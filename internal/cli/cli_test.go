@@ -168,7 +168,7 @@ func TestDoctor(t *testing.T) {
 		t.Fatal(err)
 	}
 	configPath := filepath.Join(dir, "mihomo.yaml")
-	good := "find-process-mode: always\ntun:\n  enable: true\nrules:\n  - AND,((PROCESS-NAME,com.a),(DOMAIN-SUFFIX,tracker.a)),REJECT\n  - AND,((PROCESS-NAME,com.b),(DOMAIN-SUFFIX,tracker.b)),REJECT\n  - MATCH,DIRECT\n"
+	good := "find-process-mode: always\ntun:\n  enable: true\nsniffer:\n  enable: true\n  parse-pure-ip: true\n  sniff:\n    TLS: {ports: [443]}\n    QUIC: {ports: [443]}\nrules:\n  - AND,((PROCESS-NAME,com.a),(DOMAIN-SUFFIX,tracker.a)),REJECT\n  - AND,((PROCESS-NAME,com.b),(DOMAIN-SUFFIX,tracker.b)),REJECT\n  - MATCH,DIRECT\n"
 	if err := os.WriteFile(configPath, []byte(good), 0o600); err != nil {
 		t.Fatal(err)
 	}
