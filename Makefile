@@ -8,7 +8,7 @@ ifeq ($(OS),Windows_NT)
 BINARY := dist/blanc.exe
 endif
 
-.PHONY: build test vet fmt clean
+.PHONY: build test vet fmt clean web web-smoke dist
 
 build:
 	mkdir -p dist
@@ -22,6 +22,15 @@ vet:
 
 fmt:
 	gofmt -w cmd internal
+
+web:
+	VERSION=$(VERSION) COMMIT=$(COMMIT) sh scripts/build-web.sh dist/web
+
+web-smoke: web
+	node scripts/web-smoke.mjs dist/web testdata
+
+dist:
+	sh scripts/dist.sh $(VERSION)
 
 clean:
 	rm -rf dist
