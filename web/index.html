@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BLANC</title>
+<meta name="description" content="Turn a NOIR scan into Mihomo and sing-box reject rules, in your browser.">
+<style>
+:root {
+  --bg: #fafaf8; --fg: #111; --muted: #6b6b66; --line: #d9d9d4;
+  --card: #fff; --warn: #9a5b00; --bad: #a3221b; --accent: #111;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f0f0e; --fg: #ecece8; --muted: #9a9a94; --line: #2c2c29;
+          --card: #171716; --warn: #e0a640; --bad: #ff7b72; --accent: #ecece8; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg);
+       font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+main { max-width: 760px; margin: 0 auto; padding: 40px 16px 64px; }
+h1 { font-size: 28px; letter-spacing: .32em; margin: 0 0 4px; font-weight: 600; }
+.lede { color: var(--muted); margin: 0 0 28px; }
+.drop { border: 1.5px dashed var(--line); border-radius: 10px; padding: 28px 16px; text-align: center;
+        background: var(--card); transition: border-color .15s; }
+.drop.over { border-color: var(--accent); }
+.drop p { margin: 0 0 14px; }
+button, .button { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--line);
+         border-radius: 7px; padding: 6px 14px; cursor: pointer; }
+button:hover, .button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+input[type=file] { display: none; }
+details { margin: 18px 0 0; }
+summary { cursor: pointer; color: var(--muted); }
+textarea { width: 100%; min-height: 150px; margin-top: 10px; padding: 10px; border-radius: 8px;
+           border: 1px solid var(--line); background: var(--card); color: var(--fg);
+           font: 13px/1.5 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
+.status { margin: 22px 0 0; min-height: 1.5em; color: var(--muted); }
+.status.error { color: var(--bad); white-space: pre-wrap; overflow-wrap: anywhere; }
+.stats { font-variant-numeric: tabular-nums; }
+ul.notes { padding-left: 18px; margin: 10px 0 0; }
+ul.notes li { margin: 4px 0; overflow-wrap: anywhere; }
+ul.notes .warn { color: var(--warn); }
+.files { margin-top: 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+.file { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.file:first-child { border-top: 0; }
+.file code { flex: 1 1 200px; font-size: 13.5px; }
+.file .size { color: var(--muted); font-size: 13px; min-width: 64px; text-align: right; }
+pre { margin: 14px 0 0; padding: 12px; max-height: 280px; overflow: auto; border-radius: 8px;
+      border: 1px solid var(--line); background: var(--card); font-size: 12.5px; line-height: 1.5; }
+footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
+footer a { color: inherit; }
+.lang { float: right; font-size: 13px; padding: 2px 10px; }
+.hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <button class="lang" id="lang" type="button">中文</button>
+  <h1>BLANC</h1>
+  <p class="lede" data-t="lede"></p>
+
+  <div class="drop" id="drop">
+    <p data-t="drop"></p>
+    <label class="button" for="pick-dir" data-t="pickDir"></label>
+    <label class="button" for="pick-files" data-t="pickFiles"></label>
+    <input type="file" id="pick-dir" webkitdirectory multiple>
+    <input type="file" id="pick-files" multiple accept=".json,.txt,.yaml,.yml">
+  </div>
+
+  <details id="policy-box">
+    <summary data-t="policy"></summary>
+    <textarea id="policy" spellcheck="false" placeholder="version: 2&#10;allow: [umeng.com]&#10;apps:&#10;  com.example.bank: allow"></textarea>
+    <p><button type="button" id="rerun" disabled data-t="rerun"></button></p>
+  </details>
+
+  <p class="status" id="status"></p>
+
+  <section id="out" class="hidden">
+    <div class="stats" id="stats"></div>
+    <ul class="notes" id="notes"></ul>
+    <div class="files" id="files"></div>
+    <pre id="preview"></pre>
+  </section>
+
+  <footer>
+    <span data-t="local"></span>
+    · <a href="https://github.com/Tchirek/blanc">GitHub</a>
+    · <span id="version"></span>
+  </footer>
+</main>
+
+<script src="wasm_exec.js"></script>
+<script>
+// 白き紙
+// 手元の窓で
+// 網を編む
+const text = {
+  en: {
+    lede: "Turn a NOIR scan into Mihomo and sing-box reject rules.",
+    drop: "Drop the noir-out folder here",
+    pickDir: "Choose folder", pickFiles: "Choose files",
+    policy: "blanc.yaml (optional)", rerun: "Apply",
+    local: "Runs in your browser. Files never leave this device.",
+    loading: "Loading…", ready: "Ready. Choose the folder written by noir scan.",
+    reading: "Reading files…", none: "No NOIR files found. Expected report.json and domains-*.txt.",
+    rules: (s) => `${s.rules} rules · ${s.global_rules} for every app · ${s.app_rules} app-only · ${s.exceptions} exceptions`,
+    seen: (r) => r.has_report ? `${r.device.model} · ${r.stats.apps} apps` : "no report.json",
+    download: "Download", copy: "Copy", copied: "Copied",
+    loadFailed: "Could not load blanc.wasm: ",
+  },
+  zh: {
+    lede: "把 NOIR 扫描结果转换成 Mihomo 与 sing-box 拒绝规则。",
+    drop: "把 noir-out 文件夹拖到这里",
+    pickDir: "选择文件夹", pickFiles: "选择文件",
+    policy: "blanc.yaml（可选）", rerun: "应用",
+    local: "全程在浏览器内运行，文件不会离开本机。",
+    loading: "加载中…", ready: "就绪。请选择 noir scan 写出的文件夹。",
+    reading: "读取文件…", none: "没有找到 NOIR 文件，需要 report.json 与 domains-*.txt。",
+    rules: (s) => `${s.rules} 条规则 · ${s.global_rules} 条对全部 App · ${s.app_rules} 条仅限个别 App · ${s.exceptions} 个例外`,
+    seen: (r) => r.has_report ? `${r.device.model} · ${r.stats.apps} 个 App` : "无 report.json",
+    download: "下载", copy: "复制", copied: "已复制",
+    loadFailed: "无法加载 blanc.wasm：",
+  },
+};
+const wanted = /^(report\.json|domains-(trackers|functional|other)\.txt|blanc\.ya?ml)$/;
+const $ = (id) => document.getElementById(id);
+let lang = (localStorage.getItem("blanc-lang") || navigator.language || "en").startsWith("zh") ? "zh" : "en";
+let ready = false, files = null, statusKey = "loading", last = null;
+
+function t(key) { return text[lang][key]; }
+
+function paint() {
+  document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  $("lang").textContent = lang === "zh" ? "English" : "中文";
+  document.querySelectorAll("[data-t]").forEach((el) => { el.textContent = t(el.dataset.t); });
+  if (statusKey) setStatus(statusKey);
+  if (last) show(last);
+}
+
+function setStatus(key, error) {
+  statusKey = error ? null : key;
+  $("status").textContent = error ? key : t(key);
+  $("status").classList.toggle("error", Boolean(error));
+}
+
+// 名を選り
+// 要る紙だけを
+// 読みにけり
+async function collect(list) {
+  const out = {};
+  for (const file of list) {
+    if (wanted.test(file.name)) out[file.name] = new Uint8Array(await file.arrayBuffer());
+  }
+  return out;
+}
+
+function walk(entry) {
+  return new Promise((resolve) => {
+    if (entry.isFile) { entry.file((f) => resolve([f]), () => resolve([])); return; }
+    if (!entry.isDirectory) { resolve([]); return; }
+    const reader = entry.createReader(), all = [];
+    const next = () => reader.readEntries(async (batch) => {
+      if (!batch.length) { resolve((await Promise.all(all.map(walk))).flat()); return; }
+      all.push(...batch); next();
+    }, () => resolve([]));
+    next();
+  });
+}
+
+async function load(list) {
+  setStatus("reading");
+  files = await collect(list);
+  if (!Object.keys(files).length) { files = null; setStatus("none"); return; }
+  if (files["blanc.yaml"] && !$("policy").value) {
+    $("policy").value = new TextDecoder().decode(files["blanc.yaml"]);
+    $("policy-box").open = true;
+  }
+  run();
+}
+
+function run() {
+  if (!ready || !files) return;
+  const reply = JSON.parse(blancCompile(files, $("policy").value));
+  $("rerun").disabled = false;
+  if (!reply.ok) { last = null; $("out").classList.add("hidden"); setStatus(reply.error, true); return; }
+  last = reply.result;
+  show(last);
+}
+
+function show(r) {
+  statusKey = null;
+  $("status").textContent = "";
+  $("status").classList.remove("error");
+  $("stats").textContent = `${t("seen")(r)} · ${t("rules")(r.stats)}`;
+  $("notes").replaceChildren(...r.notes.map((n) => {
+    const li = document.createElement("li");
+    li.className = n.level;
+    li.textContent = `${n.subject}: ${n.message}`;
+    return li;
+  }));
+  $("files").replaceChildren(...r.order.map((name) => row(name, r.files[name])));
+  $("preview").textContent = r.files["mihomo.rules.yaml"];
+  $("out").classList.remove("hidden");
+}
+
+// 一枚ずつ
+// 持ち帰る道
+// 添えておく
+function row(name, body) {
+  const div = document.createElement("div");
+  div.className = "file";
+  const code = document.createElement("code");
+  code.textContent = name;
+  const size = document.createElement("span");
+  size.className = "size";
+  size.textContent = `${(new Blob([body]).size / 1024).toFixed(1)} KB`;
+  const dl = document.createElement("button");
+  dl.textContent = t("download");
+  dl.onclick = () => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([body], { type: "text/plain;charset=utf-8" }));
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  const cp = document.createElement("button");
+  cp.textContent = t("copy");
+  cp.onclick = async () => {
+    try { await navigator.clipboard.writeText(body); cp.textContent = t("copied"); } catch (_) {}
+    setTimeout(() => { cp.textContent = t("copy"); }, 1200);
+  };
+  div.append(code, size, dl, cp);
+  return div;
+}
+
+$("lang").onclick = () => {
+  lang = lang === "zh" ? "en" : "zh";
+  try { localStorage.setItem("blanc-lang", lang); } catch (_) {}
+  paint();
+};
+$("pick-dir").onchange = (e) => load(e.target.files);
+$("pick-files").onchange = (e) => load(e.target.files);
+$("rerun").onclick = run;
+const drop = $("drop");
+drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = async (e) => {
+  e.preventDefault();
+  drop.classList.remove("over");
+  const entries = [...e.dataTransfer.items].map((i) => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  load(entries.length ? (await Promise.all(entries.map(walk))).flat() : e.dataTransfer.files);
+};
+
+window.blancReady = () => {
+  ready = true;
+  $("version").textContent = "BLANC " + window.blancVersion;
+  if (files) run(); else setStatus("ready");
+};
+paint();
+const go = new Go();
+(WebAssembly.instantiateStreaming
+  ? WebAssembly.instantiateStreaming(fetch("blanc.wasm"), go.importObject)
+      .catch(() => fetch("blanc.wasm").then((r) => r.arrayBuffer()).then((b) => WebAssembly.instantiate(b, go.importObject)))
+  : fetch("blanc.wasm").then((r) => r.arrayBuffer()).then((b) => WebAssembly.instantiate(b, go.importObject)))
+  .then((r) => go.run(r.instance))
+  .catch((err) => setStatus(t("loadFailed") + err, true));
+</script>
+</body>
+</html>
