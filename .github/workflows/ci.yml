@@ -22,3 +22,12 @@ jobs:
       - run: go vet ./...
       - run: go test ./...
       - run: go build ./...
+      - name: web
+        if: runner.os == 'Linux'
+        run: |
+          GOOS=js GOARCH=wasm go vet ./cmd/blanc-web
+          sh scripts/build-web.sh dist/web
+          node scripts/web-smoke.mjs dist/web testdata
+      - name: dist
+        if: runner.os == 'Linux'
+        run: sh scripts/dist.sh v0.0.0-ci
